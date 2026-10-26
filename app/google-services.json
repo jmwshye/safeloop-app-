@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "802066192774",
+    "project_id": "safeloop-core",
+    "storage_bucket": "safeloop-core.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:802066192774:android:87b96071989ba5fcb2b407",
+        "android_client_info": {
+          "package_name": "com.safeloop.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_kBymcvYOapwa5QifrnPawxUTowx-81M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
