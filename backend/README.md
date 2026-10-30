@@ -1,13 +1,13 @@
 # SAFELOOP 백엔드
 
-회원가입·로그인 API와 실행에 필요한 NestJS·PostgreSQL·Drizzle 구성.
+회원가입·로그인·출근·안전점검 3항목 API와 실행에 필요한 NestJS·PostgreSQL·Drizzle 구성.
 
 ## 앱에서 서버에 연결할 때
 
-- [앱 API 명세](API.md): 회원가입·로그인 요청·응답과 오류 처리
+- [앱 API 명세](API.md): 회원가입·로그인·출근·안전점검 요청·응답과 오류 처리
 - 개발 PC 기본 주소: `http://127.0.0.1:3000/`
 - `GET /`: 연결 확인용 `200`, 문자열 `Hello World!`
-- 회원가입·로그인은 **AWS 미배포**, 실제 앱 연동은 미확인. GitHub 공유와 서버 배포는 별도 작업
+- 회원가입·로그인·출근·안전점검은 **AWS 미배포**, 실제 앱 연동은 미확인. GitHub 공유와 서버 배포는 별도 작업
 
 ## 처음 실행할 때
 
@@ -25,7 +25,7 @@ npm run db:migrate
 npm run start:dev
 ```
 
-`db:migrate`는 회원·로그인 정보를 저장할 `users`·`sessions` 테이블을 준비. 이미 적용한 `0000_auth` 변경은 건너뜀.
+`db:migrate`는 `0000_auth`·`0001_attendance`를 순서대로 적용해 `users`·`sessions`·`attendances` 테이블을 준비. 이미 적용한 변경은 건너뜀.
 브라우저에서 `http://127.0.0.1:3000/`을 열어 `Hello World!` 확인. 서버 시작 시 DB 연결에 실패하면 실행도 중단.
 
 ## 다시 실행하거나 수정했을 때
@@ -68,14 +68,14 @@ DB도 종료하려면:
 | `npm run format:check` | 들여쓰기·코드 형식 |
 | `npm run lint` | 정적 코드 검사 |
 | `npm run build` | 빌드 |
-| `npm test` | 비밀번호 처리 검사. 별도 테스트 DB를 지정하면 회원가입·로그인 통합검사도 실행 |
+| `npm test` | 비밀번호 처리 검사. 별도 테스트 DB를 지정하면 회원가입·로그인·출근·안전점검 통합검사도 실행 |
 
 PowerShell에서 `npm.ps1` 실행이 차단되면 `npm` 대신 `npm.cmd` 사용.
 
 ### API와 DB를 함께 검사할 때
 
 이름이 **`_test`로 끝나는 별도 DB**를 준비하고 접속 정보를 아래에 입력.
-테이블은 검사 시작 시 자동 준비하고, 검사에서 만든 계정·로그인 정보는 종료 시 정리.
+테이블은 검사 시작 시 자동 준비하고, 검사에서 만든 계정·로그인·출근·점검 정보는 종료 시 정리.
 
 ```powershell
 $env:TEST_DATABASE_URL = 'postgresql://DB계정:DB비밀번호@127.0.0.1:5432/safeloop_auth_test'

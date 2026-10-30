@@ -24,6 +24,15 @@ const errors: Record<number, { code: string; message: string }> = {
   },
 };
 
+const attendanceErrors: Record<number, { code: string; message: string }> = {
+  401: { code: 'UNAUTHORIZED', message: '다시 로그인해 주세요.' },
+  404: { code: 'ATTENDANCE_NOT_FOUND', message: '출근 기록을 찾을 수 없어요.' },
+  409: {
+    code: 'ATTENDANCE_NOT_TODAY',
+    message: '오늘의 출근 기록만 수정할 수 있어요.',
+  },
+};
+
 @Injectable()
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -34,7 +43,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const request = context.getRequest<Request>();
     const path = request.path.toLowerCase();
-    if (!path.startsWith('/auth/')) {
+    const isAttendance =
+      path === '/attendances' || path.startsWith('/attendances/');
+    if (!path.startsWith('/auth/') && !isAttendance) {
       new BaseExceptionFilter(this.adapterHost.httpAdapter).catch(
         exception,
         host,
@@ -45,10 +56,11 @@ export class ApiExceptionFilter implements ExceptionFilter {
       exception instanceof HttpException ? exception.getStatus() : 500;
     if (status >= 500) this.logger.error('API 요청 처리 중 서버 오류 발생');
     // SQL·비밀번호·토큰이 포함될 수 있는 내부 예외는 응답이나 로그에 출력하지 않는다.
-    const error = errors[status] ?? {
-      code: 'SERVER_ERROR',
-      message: '서버 오류가 발생했어요. 잠시 후 다시 시도해 주세요.',
-    };
+    const error = (isAttendance ? attendanceErrors[status] : undefined) ??
+      errors[status] ?? {
+        code: 'SERVER_ERROR',
+        message: '서버 오류가 발생했어요. 잠시 후 다시 시도해 주세요.',
+      };
     context
       .getResponse<Response>()
       .setHeader('Cache-Control', 'no-store')
