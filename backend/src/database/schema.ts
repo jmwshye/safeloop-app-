@@ -1,10 +1,13 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  date,
   index,
+  pgEnum,
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -40,4 +43,41 @@ export const sessions = pgTable(
       .notNull(),
   },
   (table) => [index('sessions_user_id_idx').on(table.userId)],
+);
+
+export const safetyAnswer = pgEnum('safety_answer', [
+  'confirmed',
+  'needs_attention',
+  'unknown',
+]);
+
+export const attendances = pgTable(
+  'attendances',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    workDate: date('work_date', { mode: 'string' }).notNull(),
+    checkedInAt: timestamp('checked_in_at', { withTimezone: true }).notNull(),
+    fallHazard: safetyAnswer('fall_hazard'),
+    floorAndGuardrail: safetyAnswer('floor_and_guardrail'),
+    protectiveEquipment: safetyAnswer('protective_equipment'),
+    safetyCheckUpdatedAt: timestamp('safety_check_updated_at', {
+      withTimezone: true,
+    }),
+  },
+  (table) => [
+    unique('attendances_user_date_unique').on(table.userId, table.workDate),
+    check(
+      'attendances_complete_safety_check',
+      sql`
+      (${table.fallHazard} IS NULL AND ${table.floorAndGuardrail} IS NULL
+        AND ${table.protectiveEquipment} IS NULL AND ${table.safetyCheckUpdatedAt} IS NULL)
+      OR
+      (${table.fallHazard} IS NOT NULL AND ${table.floorAndGuardrail} IS NOT NULL
+        AND ${table.protectiveEquipment} IS NOT NULL AND ${table.safetyCheckUpdatedAt} IS NOT NULL)
+    `,
+    ),
+  ],
 );
