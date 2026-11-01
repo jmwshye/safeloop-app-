@@ -6,10 +6,11 @@ import { DatabaseModule } from './database.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ApiExceptionFilter } from './api-exception.filter.js';
 import { AttendanceModule } from './attendance/attendance.module.js';
+import { HealthController } from './health.controller.js';
 
 @Module({
   imports: [DatabaseModule, AuthModule, AttendanceModule],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [
     AppService,
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
