@@ -21,11 +21,10 @@
 
 | 영역 | 위치 |
 | --- | --- |
-| 최신 작업자 앱 | `origin/taegyu/feat/app-nest-integration` (PR #10, #11~#17 위에 이어짐) |
-| 서버 | `origin/taegyu/feat/backend-safety-reports` (PR #7~#9가 차례로 쌓임) |
+| 최신 앱·서버·문서 | `origin/feat/app-demo-integration` (PR #19, 기존 PR 전체 통합) |
 | 관리자 웹 | 별도 저장소 `jmwshye/safeloop` (Firebase 연결 상태) |
 
-앱 기준은 #10 코드이고 화면 기준은 `docs/wireframe.md`와 캔버스다. 서버는 NestJS(`backend/`)로 통일하고 Firebase는 푸시(FCM)에만 쓴다(2026-11-02 확정). 합치는 순서는 `docs/STATUS.md`를 따른다.
+앱 화면 기준은 `docs/wireframe.md`와 캔버스다. 서버는 NestJS(`backend/`)로 통일하고 Firebase는 푸시(FCM)에만 쓴다(2026-11-02 확정).
 
 ## 제품 규칙
 
