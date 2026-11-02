@@ -1,62 +1,149 @@
 package com.safeloop.app
 
 import android.content.Context
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.functions.FirebaseFunctions
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
-import kotlinx.coroutines.tasks.await
-import java.io.ByteArrayOutputStream
+import android.content.Intent
 import android.graphics.Bitmap
-import java.util.UUID
 import androidx.work.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.time.Instant
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
-class Repository(private val context: Context) {
- val auth = FirebaseAuth.getInstance()
- val db = FirebaseFirestore.getInstance()
- private val api = FirebaseFunctions.getInstance("asia-northeast3")
- val prefs = context.getSharedPreferences("safeloop",Context.MODE_PRIVATE)
- var siteId: String
-  get() = prefs.getString("siteId", "") ?: ""
-  set(value) { prefs.edit().putString("siteId",value).apply() }
- suspend fun command(action: String, values: Map<String,Any?> = emptyMap()): Map<String,Any?> {
-  @Suppress("UNCHECKED_CAST")
-  return api.getHttpsCallable("command").call(mapOf("siteId" to siteId,"deviceTime" to java.time.Instant.now().toString()) + values + mapOf("action" to action)).await().getData() as Map<String,Any?>
- }
- suspend fun signIn(email: String, password: String) { auth.signInWithEmailAndPassword(email,password).await() }
- suspend fun verificationPhoto(callId:String):ByteArray {
-  val result=api.getHttpsCallable("viewCallPhoto").call(mapOf("siteId" to siteId,"callId" to callId)).await().getData() as? Map<*,*> ?: error("사진 응답을 확인해 주세요.")
-  return android.util.Base64.decode(result["base64"] as? String ?: error("확인 사진이 없습니다."),android.util.Base64.DEFAULT)
- }
- suspend fun signUp(email: String, password: String, name: String) { auth.createUserWithEmailAndPassword(email,password).await(); command("profile",mapOf("name" to name)) }
- suspend fun upload(bitmap: Bitmap, callId:String?=null): String {
-  val uid = auth.currentUser?.uid ?: error("로그인 필요")
-  val bytes = ByteArrayOutputStream().apply { bitmap.compress(Bitmap.CompressFormat.JPEG,85,this) }.toByteArray()
-  val path = "photos/$siteId/$uid/${UUID.randomUUID()}.jpg"
-  val metadata=com.google.firebase.storage.StorageMetadata.Builder().setContentType("image/jpeg")
-  if(callId!=null)metadata.setCustomMetadata("callId",callId)
-  FirebaseStorage.getInstance().reference.child(path).putBytes(bytes,metadata.build()).await()
-  return path
- }
- fun queue(action:String, values:Map<String,Any?>) {
-  val uid = auth.currentUser?.uid ?: return
-  val json = JSONObject(values).toString()
-  val data = workDataOf("action" to action,"siteId" to siteId,"uid" to uid,"values" to json)
-  val work = OneTimeWorkRequestBuilder<CommandWorker>().setInputData(data).setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).setBackoffCriteria(BackoffPolicy.EXPONENTIAL,10,java.util.concurrent.TimeUnit.SECONDS).build()
-  WorkManager.getInstance(context).enqueue(work)
- }
+class Repository(context: Context) {
+    private val context = context.applicationContext
+    private val sessions = NestSessionStore(this.context)
+    val prefs = this.context.getSharedPreferences("safeloop", Context.MODE_PRIVATE)
+    private val http get() = NestHttp(BuildConfig.API_BASE_URL, BuildConfig.DEBUG)
+    val currentUser: SessionUser? get() = sessions.read()?.user
+    val hasSession: Boolean get() = currentUser != null
+    internal val sessionId: String? get() = sessions.read()?.id
+    internal val identity: OfflineIdentity get() = sessions.read().let { OfflineIdentity(it?.user?.uid, it?.id, siteId) }
+    var siteId: String
+        get() = prefs.getString("nestSiteId", "") ?: ""
+        set(value) { prefs.edit().putString("nestSiteId", value).commit() }
+    val deviceId: String get() = synchronized(deviceLock) {
+        prefs.getString("nestDeviceId", null) ?: UUID.randomUUID().toString().also { prefs.edit().putString("nestDeviceId", it).commit() }
+    }
+    suspend fun signIn(email: String, password: String) {
+        val result = json("POST", "/auth/login", mapOf("email" to email, "password" to password), authenticated = false)
+        val user = result["user"] as? Map<*, *> ?: error("로그인 응답을 확인해 주세요.")
+        val newSession = NestSession(SessionUser(user["id"] as String, user["name"] as String, user["email"] as String), result["accessToken"] as String, Instant.parse(result["expiresAt"] as String).toEpochMilli(), UUID.randomUUID().toString())
+        withContext(Dispatchers.IO) { clearLocal(); sessions.save(newSession) }
+    }
+    suspend fun signUp(email: String, password: String, name: String) {
+        json("POST", "/auth/signup", mapOf("email" to email, "password" to password, "name" to name), authenticated = false)
+        signIn(email, password)
+    }
+    suspend fun logout() {
+        val ending = sessions.read()
+        if (ending == null) { withContext(NonCancellable + Dispatchers.IO) { clearLocal() }; return }
+        try { json("DELETE", "/push-devices/$deviceId", expected = OfflineIdentity(ending.user.uid, ending.id, siteId)) }
+        catch (_: IOException) { /* Local logout must work while offline. */ }
+        finally { withContext(NonCancellable + Dispatchers.IO) { clearLocal(ending.token) } }
+    }
+    private fun clearLocal(expectedToken: String? = null) {
+        if (!sessions.clear(expectedToken)) return
+        context.stopService(Intent(context, SafetyService::class.java))
+        WorkManager.getInstance(context).cancelAllWorkByTag(queueTag)
+        prefs.edit().remove("nestSiteId").remove("localCallId").remove("localAlert").remove("ackAlert")
+            .remove("attendanceId").remove("pendingSignal").remove("signalFailed").remove("signalSession").remove("signalSite").remove("signalAt").remove("highRiskTask").putBoolean("monitoring", false).commit()
+        for (folder in listOf("nest-media", "verification")) java.io.File(context.cacheDir, folder).deleteRecursively()
+    }
+    suspend fun request(method: String, path: String, body: Map<String, Any?>? = null): Map<String, Any?> = json(method, path, body)
+    suspend fun get(path: String): Map<String, Any?> = request("GET", path)
+    private suspend fun json(method: String, path: String, body: Map<String, Any?>? = null, authenticated: Boolean = true, expected: OfflineIdentity? = null): Map<String, Any?> {
+        val boundIdentity = expected ?: if (authenticated) identity else null
+        val bytes = body?.let { JSONObject(it).toString().toByteArray(Charsets.UTF_8) }
+        val result = send(method, path, bytes, "application/json; charset=utf-8", authenticated, boundIdentity)
+        if (result.bytes.isEmpty()) return emptyMap()
+        try { return jsonMap(JSONObject(String(result.bytes, Charsets.UTF_8))) }
+        catch (error: Exception) { throw IOException("서버 응답 형식을 확인해 주세요.", error) }
+    }
+    private suspend fun send(method: String, path: String, body: ByteArray? = null, contentType: String? = null, authenticated: Boolean = true, expected: OfflineIdentity? = if (authenticated) identity else null): HttpPayload = withContext(Dispatchers.IO) {
+        val session = if (authenticated) sessions.read() ?: throw ApiException(401, "UNAUTHORIZED", "다시 로그인해 주세요.") else null
+        if (expected != null && !expected.matches(OfflineIdentity(session?.user?.uid, session?.id, siteId))) throw ApiException(403, "SESSION_CHANGED", "계정 또는 현장이 변경되어 이전 작업을 취소했어요.")
+        val token = session?.token
+        val response = http.execute(method, path, token, contentType, body)
+        if (expected != null && !expected.matches(identity)) throw ApiException(403, "SESSION_CHANGED", "계정 또는 현장이 변경되어 이전 응답을 취소했어요.")
+        if (response.status !in 200..299) {
+            if (response.status == 401 && token != null) clearLocal(token)
+            val json = runCatching { JSONObject(String(response.bytes, Charsets.UTF_8)) }.getOrNull()
+            val error = json?.optJSONObject("error")
+            val message = error?.optString("message")?.takeIf { it.isNotBlank() }
+                ?: json?.optString("message")?.takeIf { it.isNotBlank() }
+                ?: if (response.status == 401) "다시 로그인해 주세요." else "서버 요청을 처리하지 못했어요. (${response.status})"
+            throw ApiException(response.status, error?.optString("code")?.takeIf { it.isNotBlank() } ?: "HTTP_${response.status}", message)
+        }
+        response
+    }
+    suspend fun registerDevice(token: String) { request("PUT", "/push-devices/$deviceId", mapOf("fcmToken" to token)) }
+    suspend fun upload(bitmap: Bitmap, purpose: String): String {
+        require(purpose in setOf("ppe", "risk_before", "risk_after", "incident_scene"))
+        val expected = identity
+        val selectedSite = siteId.also { require(it.isNotBlank()) { "현장에 먼저 연결해 주세요." } }
+        return withContext(Dispatchers.IO) {
+            val jpeg = ByteArrayOutputStream().apply { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 85, this)) }.toByteArray()
+            require(jpeg.size <= 5 * 1024 * 1024) { "사진 크기를 5 MiB 이하로 줄여 주세요." }
+            val boundary = "SafeLoop${UUID.randomUUID()}"
+            val multipart = ByteArrayOutputStream().apply {
+                write("--$boundary\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\n$purpose\r\n--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".toByteArray())
+                write(jpeg); write("\r\n--$boundary--\r\n".toByteArray())
+            }.toByteArray()
+            val response = send("POST", "/sites/$selectedSite/photos", multipart, "multipart/form-data; boundary=$boundary", expected = expected)
+            JSONObject(String(response.bytes, Charsets.UTF_8)).getJSONObject("photo").getString("id")
+        }
+    }
+    suspend fun photo(photoId: String): ByteArray {
+        UUID.fromString(photoId)
+        return send("GET", "/sites/$siteId/photos/$photoId").bytes
+    }
+    suspend fun report(path: String): ByteArray = send("GET", path).bytes
+    internal suspend fun queuedRequest(expected: OfflineIdentity, method: String, path: String, body: Map<String, Any?>) = json(method, path, body, expected = expected)
+
+    /** Queue only explicit idempotent operations; keep the exact body and login/site that created them. */
+    fun queueStatuses() = WorkManager.getInstance(context).getWorkInfosByTagFlow(queueTag)
+    fun pendingTag() = "nest-pending:${sessionId}:${siteId}"
+    fun queueRequest(method: String, path: String, body: Map<String, Any?>, site: String = siteId) {
+        val session = sessions.read() ?: return
+        require(method == "PUT" || (method == "POST" && body["requestId"] is String))
+        val data = workDataOf("method" to method, "path" to path, "site" to site, "uid" to session.user.uid,
+            "session" to session.id, "body" to JSONObject(body).toString())
+        val work = OneTimeWorkRequestBuilder<CommandWorker>().setInputData(data)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS).addTag(queueTag).addTag(pendingTag()).build()
+        WorkManager.getInstance(context).enqueue(work)
+    }
+    companion object { private val deviceLock = Any(); private const val queueTag = "nest-offline-commands" }
 }
-class CommandWorker(context:Context, params:WorkerParameters):CoroutineWorker(context,params) {
- override suspend fun doWork():Result {
-  val repo=Repository(applicationContext)
-  if(repo.auth.currentUser?.uid!=inputData.getString("uid"))return Result.failure()
-  val action=inputData.getString("action")?:return Result.failure()
-  val json=JSONObject(inputData.getString("values")?:"{}")
-  val values=json.keys().asSequence().associateWith { if(json.isNull(it))null else json.get(it) }.toMutableMap()
-  values["siteId"]=inputData.getString("siteId")?:""
-  return try { repo.command(action,values);Result.success() } catch(e:com.google.firebase.functions.FirebaseFunctionsException) {
-   if(e.code in listOf(com.google.firebase.functions.FirebaseFunctionsException.Code.UNAVAILABLE,com.google.firebase.functions.FirebaseFunctionsException.Code.DEADLINE_EXCEEDED))Result.retry() else Result.failure()
-  } catch(e:Exception){Result.retry()}
- }
+
+internal fun jsonMap(json: JSONObject): Map<String, Any?> = json.keys().asSequence().associateWith { jsonValue(json.get(it)) }
+private fun jsonValue(value: Any?): Any? = when (value) {
+    JSONObject.NULL -> null
+    is JSONObject -> jsonMap(value)
+    is JSONArray -> (0 until value.length()).map { jsonValue(value.get(it)) }
+    else -> value
+}
+
+class CommandWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val repo = Repository(applicationContext)
+        val expected = OfflineIdentity(inputData.getString("uid"), inputData.getString("session"), inputData.getString("site"))
+        if (!expected.matches(repo.identity)) return Result.failure()
+        val method = inputData.getString("method") ?: return Result.failure()
+        val path = inputData.getString("path") ?: return Result.failure()
+        return try {
+            repo.queuedRequest(expected, method, path, jsonMap(JSONObject(inputData.getString("body") ?: "{}")))
+            Result.success()
+        } catch (error: ApiException) {
+            if (error.retryable && runAttemptCount < 8) Result.retry() else Result.failure()
+        } catch (_: IOException) {
+            if (runAttemptCount < 8) Result.retry() else Result.failure()
+        } catch (_: IllegalArgumentException) { Result.failure() }
+    }
 }

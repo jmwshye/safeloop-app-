@@ -9,10 +9,21 @@ android {
  compileSdk = 35
  defaultConfig { applicationId = "com.safeloop.app"; minSdk = 26; targetSdk = 35; versionCode = 2; versionName = "0.2.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
  buildFeatures { compose = true; buildConfig = true }
+ val apiUrl = providers.gradleProperty("SAFELOOP_API_URL").orNull
+ fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+ buildTypes {
+  getByName("debug") { buildConfigField("String", "API_BASE_URL", quoted(apiUrl ?: "http://10.0.2.2:3000")) }
+  getByName("release") { buildConfigField("String", "API_BASE_URL", quoted(apiUrl ?: "")) }
+ }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+ constraints {
+  implementation("androidx.fragment:fragment:1.8.9") {
+   because("FCM의 이전 Fragment 의존성을 Activity Result API와 호환되는 버전으로 맞춤")
+  }
+ }
  testImplementation("junit:junit:4.13.2")
  implementation(platform("androidx.compose:compose-bom:2024.12.01"))
  implementation("androidx.activity:activity-compose:1.9.3")
@@ -27,10 +38,6 @@ dependencies {
  implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
  implementation("androidx.core:core-ktx:1.15.0")
  implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
- implementation("com.google.firebase:firebase-auth")
- implementation("com.google.firebase:firebase-firestore")
- implementation("com.google.firebase:firebase-functions")
- implementation("com.google.firebase:firebase-storage")
  implementation("com.google.firebase:firebase-messaging")
  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
  implementation("androidx.work:work-runtime-ktx:2.10.0")
