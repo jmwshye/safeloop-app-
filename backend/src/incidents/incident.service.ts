@@ -47,12 +47,13 @@ type Push = typeof incidentPushes.$inferSelect;
 const selfWait = 15_000;
 const responderWait = 30_000;
 const verificationWait = 120_000;
-const seoulWorkDate = new Intl.DateTimeFormat('sv-SE', {
-  timeZone: 'Asia/Seoul',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
+// Keep server evidence time distinct from when the phone observed an event.
+function eventTime(value: string | undefined, now: Date, since?: Date) {
+  const time = value ? new Date(value) : now;
+  if (time > now || (since && time < since))
+    throw new IncidentError('INVALID_EVENT_TIME');
+  return time;
+}
 
 @Injectable()
 export class IncidentService {
@@ -143,7 +144,7 @@ export class IncidentService {
         and(
           eq(attendances.siteId, c.siteId),
           eq(attendances.userId, userId),
-          eq(attendances.workDate, seoulWorkDate.format(now)),
+          lte(attendances.checkedInAt, now),
           isNull(attendances.checkedOutAt),
           excludeHighRisk ? isNull(attendances.highRiskTask) : undefined,
         ),
@@ -172,6 +173,12 @@ export class IncidentService {
     if (!member) throw new IncidentError('INCIDENT_NOT_FOUND');
   }
   private async contactEligible(tx: Tx, c: Call, userId: string, now: Date) {
+    const [ownIncident] = await tx
+      .select({ id: incidents.id })
+      .from(incidents)
+      .where(and(eq(incidents.workerId, userId), isNull(incidents.closedAt)))
+      .limit(1);
+    if (ownIncident) return false;
     return userId === c.foremanId
       ? this.foreman(tx, c, userId)
       : this.onShift(tx, c, userId, now, userId !== c.buddyId);
@@ -267,17 +274,43 @@ export class IncidentService {
     type: Push['type'],
     now: Date,
   ) {
-    return tx
-      .insert(incidentPushes)
-      .values({
-        incidentId: c.id,
-        userId,
-        type,
-        requestedAt: now,
-        nextAttemptAt: now,
-      })
-      .onConflictDoNothing()
-      .returning({ id: incidentPushes.id });
+    const insert = tx.insert(incidentPushes).values({
+      incidentId: c.id,
+      userId,
+      type,
+      requestedAt: now,
+      nextAttemptAt: now,
+    });
+    if (
+      type === 'worker_safe' ||
+      type === 'verification_overdue' ||
+      type === 'observation'
+    ) {
+      const freshCycle =
+        type === 'worker_safe'
+          ? undefined
+          : c.acceptedAt
+            ? sql`${incidentPushes.requestedAt}<${c.acceptedAt}`
+            : undefined;
+      return insert
+        .onConflictDoUpdate({
+          target: [
+            incidentPushes.incidentId,
+            incidentPushes.userId,
+            incidentPushes.type,
+          ],
+          set: {
+            requestedAt: now,
+            nextAttemptAt: now,
+            attempts: 0,
+            status: 'queued',
+            sentAt: null,
+          },
+          setWhere: freshCycle,
+        })
+        .returning({ id: incidentPushes.id });
+    }
+    return insert.onConflictDoNothing().returning({ id: incidentPushes.id });
   }
   private async invite(
     tx: Tx,
@@ -347,7 +380,7 @@ export class IncidentService {
           eq(attendances.siteId, c.siteId),
           eq(attendances.zone, c.zone),
           isNull(attendances.highRiskTask),
-          eq(attendances.workDate, seoulWorkDate.format(now)),
+          lte(attendances.checkedInAt, now),
           isNull(attendances.checkedOutAt),
           ne(attendances.userId, c.workerId),
           notExists(alreadyInvited),
@@ -371,6 +404,63 @@ export class IncidentService {
     });
   }
   private async advance(tx: Tx, c: Call, now: Date) {
+    if (
+      !c.closedAt &&
+      c.responderId &&
+      !(await this.contactEligible(tx, c, c.responderId, now))
+    ) {
+      const previous = c.responderId;
+      await tx
+        .update(incidentRecipients)
+        .set({ declinedAt: now })
+        .where(
+          and(
+            eq(incidentRecipients.incidentId, c.id),
+            eq(incidentRecipients.userId, previous),
+          ),
+        );
+      await this.log(tx, c, 'responder_unavailable', null, {
+        recipientId: previous,
+      });
+      const released = await this.change(tx, c, {
+        status: 'calling',
+        responderId: null,
+        acceptedAt: null,
+        arrivedAt: null,
+        observation: null,
+        observedAt: null,
+      });
+      // Earlier invites (including the foreman) are still valid until explicitly declined.
+      const remaining = await tx
+        .select({ id: incidentRecipients.userId })
+        .from(incidentRecipients)
+        .where(
+          and(
+            eq(incidentRecipients.incidentId, c.id),
+            isNull(incidentRecipients.declinedAt),
+          ),
+        );
+      if (remaining.length)
+        await tx
+          .update(incidentPushes)
+          .set({
+            status: 'queued',
+            attempts: 0,
+            requestedAt: now,
+            nextAttemptAt: now,
+          })
+          .where(
+            and(
+              eq(incidentPushes.incidentId, c.id),
+              eq(incidentPushes.type, 'alert'),
+              inArray(
+                incidentPushes.userId,
+                remaining.map((r) => r.id),
+              ),
+            ),
+          );
+      return this.nextCandidate(tx, released, now);
+    }
     if (
       c.status === 'awaiting_worker' &&
       c.workerDueAt &&
@@ -407,17 +497,24 @@ export class IncidentService {
       .from(users)
       .where(eq(users.id, userId))
       .for('no key update');
-    const fingerprint = createHash('sha256')
-      .update(
-        JSON.stringify([
-          input.siteId,
-          input.source,
-          input.peakG ?? null,
-          input.sensorWindow ?? null,
-          input.location ?? null,
-        ]),
-      )
-      .digest('hex');
+    const values = [
+      input.siteId,
+      input.source,
+      input.peakG ?? null,
+      input.sensorWindow ?? null,
+      input.location ?? null,
+    ];
+    const hash = (parts: unknown[]) =>
+      createHash('sha256').update(JSON.stringify(parts)).digest('hex');
+    const legacyFingerprint = hash(values);
+    const fingerprint =
+      input.detectedAt || input.attendanceId
+        ? hash([
+            ...values,
+            input.detectedAt ?? null,
+            input.attendanceId ?? null,
+          ])
+        : legacyFingerprint;
     const [prior] = await tx
       .select()
       .from(incidentRequests)
@@ -428,7 +525,10 @@ export class IncidentService {
         ),
       );
     if (prior) {
-      if (prior.fingerprint !== fingerprint)
+      if (
+        prior.fingerprint !== fingerprint &&
+        prior.fingerprint !== legacyFingerprint
+      )
         throw new IncidentError('REQUEST_ID_CONFLICT');
       return {
         created: false,
@@ -457,6 +557,9 @@ export class IncidentService {
       .where(eq(sites.id, input.siteId));
     if (!site || (!site.member && site.foremanId !== userId))
       throw new IncidentError('SITE_NOT_FOUND');
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended('incident-accept:' || ${userId}::text,0))`,
+    );
     let [c] = await tx
       .select()
       .from(incidents)
@@ -473,7 +576,7 @@ export class IncidentService {
           and(
             eq(attendances.siteId, site.id),
             eq(attendances.userId, userId),
-            eq(attendances.workDate, seoulWorkDate.format(now)),
+            lte(attendances.checkedInAt, now),
             isNull(attendances.checkedOutAt),
           ),
         )
@@ -482,6 +585,11 @@ export class IncidentService {
       if (!shift && input.source === 'abnormal_movement')
         throw new IncidentError('SHIFT_REQUIRED');
       const manual = input.source === 'manual_help';
+      const detected = manual
+        ? now
+        : eventTime(input.detectedAt, now, shift?.checkedInAt);
+      if (input.attendanceId && input.attendanceId !== shift?.id)
+        throw new IncidentError('SHIFT_REQUIRED');
       [c] = await tx
         .insert(incidents)
         .values({
@@ -493,11 +601,14 @@ export class IncidentService {
           attendanceId: shift?.id ?? null,
           source: input.source,
           status: 'awaiting_worker',
-          createdAt: now,
-          workerDueAt: manual ? null : new Date(now.getTime() + selfWait),
+          createdAt: detected,
+          workerDueAt: manual ? null : new Date(detected.getTime() + selfWait),
           workerResponse: manual ? 'help_needed' : null,
           workerRespondedAt: manual ? now : null,
-          location: input.location,
+          location:
+            now.getTime() - detected.getTime() <= 120_000
+              ? input.location
+              : undefined,
           peakG: input.peakG,
           sensorWindow: input.sensorWindow,
         })
@@ -507,9 +618,14 @@ export class IncidentService {
         c,
         manual ? 'help_requested' : 'signal_detected',
         manual ? userId : null,
-        input.peakG === undefined ? {} : { peakG: input.peakG },
+        {
+          ...(input.peakG === undefined ? {} : { peakG: input.peakG }),
+          ...(input.detectedAt ? { detectedAt: detected.toISOString() } : {}),
+        },
       );
-      if (manual) c = await this.startCalls(tx, c, now);
+      c = manual
+        ? await this.startCalls(tx, c, now)
+        : await this.advance(tx, c, now);
     } else if (
       input.source === 'manual_help' &&
       c.status === 'awaiting_worker'
@@ -726,18 +842,27 @@ export class IncidentService {
       return updated;
     });
   }
-  receipt(userId: string, id: string, stage: 'received' | 'opened') {
+  receipt(
+    userId: string,
+    id: string,
+    {
+      stage,
+      occurredAt,
+    }: { stage: 'received' | 'opened'; occurredAt?: string },
+  ) {
     return this.action(userId, id, async (tx, c, now) => {
       const r = await this.recipient(tx, c, userId);
       if (!r) throw new IncidentError('INCIDENT_ACTION_FORBIDDEN');
       const key = stage === 'received' ? 'receivedAt' : 'openedAt';
       if (!r[key]) {
+        const at = eventTime(occurredAt, now, r.requestedAt);
         await tx
           .update(incidentRecipients)
-          .set({ [key]: now })
+          .set({ [key]: at })
           .where(eq(incidentRecipients.id, r.id));
         await this.log(tx, c, stage, stage === 'received' ? null : userId, {
           recipientId: userId,
+          occurredAt: at.toISOString(),
         });
       }
       return c;
@@ -869,7 +994,11 @@ export class IncidentService {
       return updated;
     });
   }
-  dial(userId: string, id: string, requestId: string) {
+  dial(
+    userId: string,
+    id: string,
+    { requestId, openedAt }: { requestId: string; openedAt?: string },
+  ) {
     return this.action(userId, id, async (tx, c, now) => {
       const [prior] = await tx
         .select({ id: emergencyDialIntents.id })
@@ -882,7 +1011,9 @@ export class IncidentService {
           ),
         );
       if (prior) return c;
-      if (c.closedAt) throw new IncidentError('INCIDENT_STATE_CONFLICT');
+      const opened = eventTime(openedAt, now, c.createdAt);
+      if (c.closedAt && (!openedAt || opened > c.closedAt))
+        throw new IncidentError('INCIDENT_STATE_CONFLICT');
       const inserted = await tx
         .insert(emergencyDialIntents)
         .values({
@@ -890,21 +1021,32 @@ export class IncidentService {
           siteId: c.siteId,
           userId,
           requestId,
-          openedAt: now,
+          openedAt: opened,
         })
         .onConflictDoNothing()
         .returning({ id: emergencyDialIntents.id });
       if (!inserted.length) throw new IncidentError('REQUEST_ID_CONFLICT');
-      await this.log(tx, c, 'dialer_opened', userId);
+      await this.log(tx, c, 'dialer_opened', userId, {
+        openedAt: opened.toISOString(),
+      });
       return c;
     });
   }
-  siteDial(siteId: string, userId: string, requestId: string) {
+  siteDial(
+    siteId: string,
+    userId: string,
+    { requestId, openedAt }: { requestId: string; openedAt?: string },
+  ) {
     return this.database.db.transaction(async (tx) => {
       await siteAccess(tx, siteId, userId);
       const [entry] = await tx
         .insert(emergencyDialIntents)
-        .values({ siteId, userId, requestId, openedAt: this.now() })
+        .values({
+          siteId,
+          userId,
+          requestId,
+          openedAt: eventTime(openedAt, this.now()),
+        })
         .onConflictDoNothing()
         .returning();
       if (entry) {
@@ -914,6 +1056,7 @@ export class IncidentService {
           subjectId: userId,
           entityId: entry.id,
           type: 'incident.dialer_opened',
+          details: { openedAt: entry.openedAt.toISOString() },
           source: 'human',
         });
         return { id: entry.id, openedAt: entry.openedAt };
@@ -987,7 +1130,16 @@ export class IncidentService {
           ),
         );
       const next = await this.nextCandidate(tx, c, now);
-      if (!available.length) return next;
+      const eligible = [];
+      for (const r of available) {
+        if (await this.contactEligible(tx, c, r.userId, now))
+          eligible.push(r.userId);
+      }
+      if (!eligible.length) {
+        if (next.status === 'unanswered')
+          throw new IncidentError('NO_RESPONDER_AVAILABLE');
+        return next;
+      }
       await tx
         .update(incidentPushes)
         .set({
@@ -999,10 +1151,7 @@ export class IncidentService {
         .where(
           and(
             eq(incidentPushes.incidentId, id),
-            inArray(
-              incidentPushes.userId,
-              available.map((r) => r.userId),
-            ),
+            inArray(incidentPushes.userId, eligible),
             eq(incidentPushes.type, 'alert'),
             inArray(incidentPushes.status, ['unavailable', 'failed', 'sent']),
           ),
@@ -1029,6 +1178,15 @@ export class IncidentService {
           and(eq(incidents.status, 'calling'), lte(incidents.nextCallAt, now)),
           and(
             inArray(incidents.status, ['responding', 'arrived']),
+            sql`(
+            exists (select 1 from incidents own where own.worker_id = ${incidents.responderId} and own.closed_at is null)
+            or (not exists (select 1 from sites s where s.id = ${incidents.siteId} and s.foreman_user_id = ${incidents.responderId})
+                and not exists (select 1 from attendances a join site_memberships m on m.site_id=a.site_id and m.user_id=a.user_id
+                   where a.site_id=${incidents.siteId} and a.user_id=${incidents.responderId} and a.checked_out_at is null and (a.user_id=${incidents.buddyId} or a.high_risk_task is null)))
+          )`,
+          ),
+          and(
+            inArray(incidents.status, ['responding', 'arrived']),
             isNull(incidents.observedAt),
             lte(
               incidents.acceptedAt,
@@ -1042,6 +1200,7 @@ export class IncidentService {
                   and(
                     eq(incidentPushes.incidentId, incidents.id),
                     eq(incidentPushes.type, 'verification_overdue'),
+                    sql`${incidentPushes.requestedAt} >= ${incidents.acceptedAt}`,
                   ),
                 ),
             ),
@@ -1093,11 +1252,14 @@ export class IncidentService {
       if (!p || p.status !== 'queued' || p.nextAttemptAt > now) return;
       let status: Push['status'] = 'failed';
       const attempts = p.attempts + 1;
+      // Escalation adds another candidate. The original invite remains actionable.
       const ttl =
-        p.requestedAt.getTime() +
-        (p.type === 'alert' ? responderWait : 60_000) -
-        now.getTime();
+        p.type === 'alert'
+          ? responderWait
+          : p.requestedAt.getTime() + 60_000 - now.getTime();
       if (p.type === 'verification_overdue' && (c.observedAt || c.closedAt))
+        status = 'cancelled';
+      else if (p.type === 'worker_safe' && c.workerResponse !== 'okay')
         status = 'cancelled';
       else if (
         p.type === 'alert' &&
@@ -1124,6 +1286,7 @@ export class IncidentService {
               devices.map((d) => d.token),
               {
                 eventId: p.id,
+                recipientId: p.userId,
                 siteId: c.siteId,
                 incidentId: c.id,
                 type: 'incident_' + p.type,

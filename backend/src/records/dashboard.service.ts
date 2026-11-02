@@ -38,7 +38,7 @@ export class DashboardService {
           SELECT * FROM attendances WHERE site_id=${siteId}
           AND work_date=(now() AT TIME ZONE 'Asia/Seoul')::date
         ), unverified AS (
-          SELECT worker_id FROM incidents WHERE site_id=${siteId} AND status IN ('calling','unanswered','responding')
+          SELECT worker_id FROM incidents WHERE site_id=${siteId} AND (status IN ('calling','unanswered','responding') OR (status='arrived' AND observed_at IS NULL))
           UNION
           SELECT a.user_id FROM today a
           CROSS JOIN LATERAL (SELECT answered_at,expires_at FROM work_prompts

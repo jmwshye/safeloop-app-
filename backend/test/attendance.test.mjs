@@ -412,15 +412,20 @@ test(
           advancePerRead = 0;
         }
         serverTime = Date.parse('2026-10-30T15:00:00.000Z');
-        assert.deepEqual(await today(), {
-          status: 200,
-          body: { attendance: null },
-        });
+        assert.equal((await today()).body.attendance.id, original.id);
+        assert.equal((await checkIn()).body.attendance.id, original.id);
         expectError(
           await save(original.id, confirmed),
           409,
           'ATTENDANCE_NOT_TODAY',
         );
+        const closed = await request(
+          'PUT',
+          '/attendances/' + original.id + '/checkout',
+          { token: owner.token, body: {} },
+        );
+        assert.equal(closed.status, 200);
+        assert.equal((await today()).body.attendance, null);
         const response = await checkIn();
         assert.equal(response.status, 201);
         currentAttendance = response.body.attendance;
@@ -529,6 +534,12 @@ test(
     await t.test(
       '출근 저장 중 DB 오류는 500, 부분 저장·내부 정보 노출 없이 복구',
       async (subtest) => {
+        const previousShift = await request(
+          'PUT',
+          '/attendances/' + currentAttendance.id + '/checkout',
+          { token: owner.token, body: {} },
+        );
+        assert.equal(previousShift.status, 200);
         const originalQuery = Client.prototype.query;
         const query = subtest.mock.method(
           Client.prototype,

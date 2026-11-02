@@ -13,12 +13,17 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { z } from 'zod';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard.js';
 import { SitesService } from './sites.service.js';
-import { inputFor, profileSchema, setupSchema } from './sites.schemas.js';
+import {
+  createSiteSchema,
+  inputFor,
+  profileSchema,
+  setupSchema,
+} from './sites.schemas.js';
 
 const codeInput = z.strictObject({
   code: z
@@ -29,6 +34,12 @@ const codeInput = z.strictObject({
     .toUpperCase(),
 });
 const siteIdSchema = z.uuid();
+const perMember = Throttle({
+  default: {
+    getTracker: (request) =>
+      Promise.resolve((request as AuthenticatedRequest).user.id),
+  },
+});
 
 function readCode(body: unknown): string {
   const input = codeInput.safeParse(body);
@@ -37,14 +48,14 @@ function readCode(body: unknown): string {
 }
 
 @Controller('sites')
-@UseGuards(AuthGuard, ThrottlerGuard)
+@UseGuards(AuthGuard)
 export class SitesController {
   constructor(private readonly sites: SitesService) {}
 
   @Post()
   @Header('Cache-Control', 'no-store')
   create(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
-    return this.sites.create(request.user.id, inputFor(setupSchema, body));
+    return this.sites.create(request.user.id, inputFor(createSiteSchema, body));
   }
 
   @Get('mine')
@@ -82,6 +93,8 @@ export class SitesController {
   }
 
   @Post('lookup')
+  @UseGuards(ThrottlerGuard)
+  @perMember
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
   async lookup(@Body() body: unknown) {
@@ -90,6 +103,8 @@ export class SitesController {
   }
 
   @Post(':siteId/join')
+  @UseGuards(ThrottlerGuard)
+  @perMember
   @Header('Cache-Control', 'no-store')
   async join(
     @Param('siteId') siteId: string,

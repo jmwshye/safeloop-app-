@@ -61,6 +61,8 @@ export const sites = pgTable(
     latitude: doublePrecision('latitude'),
     longitude: doublePrecision('longitude'),
     foremanPhone: text('foreman_phone'),
+    creationRequestId: uuid('creation_request_id'),
+    creationFingerprint: text('creation_fingerprint'),
     breakReturnTime: text('break_return_time'),
     shiftChangeTime: text('shift_change_time'),
   },
@@ -69,6 +71,7 @@ export const sites = pgTable(
       'sites_code_format',
       sql`length(${table.code}) <= 12 AND ${table.code} ~ '^[A-Z0-9]+(-[A-Z0-9]+)*$'`,
     ),
+    unique().on(table.foremanUserId, table.creationRequestId),
     check(
       'sites_center',
       sql`(${table.latitude} IS NULL AND ${table.longitude} IS NULL) OR

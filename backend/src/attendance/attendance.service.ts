@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, gte, isNull, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../database.service.js';
 import {
   attendances,
@@ -90,6 +90,30 @@ export class AttendanceService {
       await requireSiteMember(tx, siteId, userId);
       const site = await lockSite(tx, siteId);
       const profile = await joinedProfile(tx, siteId, userId);
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${userId}::text, 2))`,
+      );
+      const [openShift] = await tx
+        .select()
+        .from(attendances)
+        .where(
+          and(
+            eq(attendances.userId, userId),
+            isNull(attendances.checkedOutAt),
+            sql`${attendances.workDate} < ${workDate}`,
+            sql`${attendances.siteId} IS NOT NULL`,
+          ),
+        )
+        .orderBy(desc(attendances.workDate))
+        .limit(1);
+      if (openShift) {
+        if (openShift.siteId !== siteId.toLowerCase())
+          conflict(
+            'ATTENDANCE_ALREADY_AT_OTHER_SITE',
+            '이전 현장에서 먼저 퇴근해 주세요.',
+          );
+        return { created: false, attendance: responseFor(openShift) };
+      }
       const [created] = await tx
         .insert(attendances)
         .values({
@@ -164,7 +188,7 @@ export class AttendanceService {
           }
           return { created: false, attendance: responseFor(paired) };
         }
-        if (!existing || existing.siteId !== siteId)
+        if (!existing || existing.siteId !== siteId.toLowerCase())
           conflict(
             'ATTENDANCE_ALREADY_AT_OTHER_SITE',
             '오늘은 다른 현장의 출근 기록이 있어요.',
@@ -195,10 +219,18 @@ export class AttendanceService {
       .where(
         and(
           eq(attendances.userId, userId),
-          eq(attendances.workDate, workDate),
+          or(
+            eq(attendances.workDate, workDate),
+            and(
+              isNull(attendances.checkedOutAt),
+              sql`${attendances.workDate} < ${workDate}`,
+              sql`${attendances.siteId} IS NOT NULL`,
+            ),
+          ),
           siteId ? eq(attendances.siteId, siteId) : undefined,
         ),
       )
+      .orderBy(desc(attendances.workDate))
       .limit(1);
     return { attendance: record ? responseFor(record) : null };
   }
@@ -287,8 +319,15 @@ export class AttendanceService {
         .where(and(eq(attendances.id, id), eq(attendances.userId, userId)))
         .for('no key update');
       if (!record) throw new NotFoundException();
-      const now = this.now();
-      if (record.workDate !== workDateAt(now)) throw new ConflictException();
+      const wallClock = this.now();
+      const now = new Date(
+        Math.max(
+          wallClock.valueOf(),
+          (record.safetyCheckUpdatedAt?.valueOf() ?? 0) + 1,
+        ),
+      );
+      if (record.workDate !== workDateAt(wallClock))
+        throw new ConflictException();
       if (record.checkedOutAt)
         conflict('SHIFT_ENDED', '이미 퇴근한 기록이에요.');
       if (!record.siteId)
@@ -314,9 +353,6 @@ export class AttendanceService {
         record.protectiveEquipment,
       ].includes('unknown');
       const hasUnknown = Object.values(input).includes('unknown');
-      const newUnknown = (
-        Object.keys(input) as (keyof SafetyCheckInput)[]
-      ).some((key) => input[key] === 'unknown' && record[key] !== 'unknown');
       const event = await appendEvent(tx, {
         siteId: record.siteId,
         actorId: userId,
@@ -328,7 +364,7 @@ export class AttendanceService {
         source: 'human',
         details: { ...input },
       });
-      if (newUnknown) {
+      if (hasUnknown) {
         await tx
           .insert(safetyReviews)
           .values({ attendanceId: id, requestedAt: now })

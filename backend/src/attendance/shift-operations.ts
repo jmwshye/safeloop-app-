@@ -7,6 +7,7 @@ import {
   workPrompts,
 } from '../database/schema.js';
 import type { Tx } from '../records/records.js';
+import { siteNotices } from '../database/record-schema.js';
 import { enqueueNotice } from '../records/notices.js';
 
 export function conflict(code: string, message: string): never {
@@ -102,6 +103,61 @@ export async function schedulePrompts(
     if (!time) continue;
     const dueAt = new Date(`${record.workDate}T${time}:00+09:00`);
     if (dueAt >= start) await addPrompt(tx, site.id, record, kind, dueAt);
+  }
+}
+
+export async function reschedulePrompts(
+  tx: Tx,
+  previous: typeof sites.$inferSelect,
+  site: typeof sites.$inferSelect,
+) {
+  const changes = [
+    ['break_return', previous.breakReturnTime, site.breakReturnTime],
+    ['shift_change', previous.shiftChangeTime, site.shiftChangeTime],
+  ] as const;
+  if (changes.every(([, before, after]) => before === after)) return;
+  const now = new Date();
+  const shifts = await tx
+    .select()
+    .from(attendances)
+    .where(
+      and(eq(attendances.siteId, site.id), isNull(attendances.checkedOutAt)),
+    );
+  for (const shift of shifts) {
+    for (const [kind, before, after] of changes) {
+      if (before === after) continue;
+      const [existing] = await tx
+        .select()
+        .from(workPrompts)
+        .where(
+          and(
+            eq(workPrompts.attendanceId, shift.id),
+            eq(workPrompts.kind, kind),
+          ),
+        )
+        .for('update');
+      if (existing) {
+        if (existing.answeredAt || existing.dueAt <= now) continue;
+        const [notice] = await tx
+          .select()
+          .from(siteNotices)
+          .where(
+            and(
+              eq(siteNotices.kind, 'work_prompt'),
+              eq(siteNotices.entityId, existing.id),
+            ),
+          )
+          .for('update');
+        if (!notice || notice.status !== 'queued' || notice.attempts > 0)
+          continue;
+        await tx.delete(siteNotices).where(eq(siteNotices.id, notice.id));
+        await tx.delete(workPrompts).where(eq(workPrompts.id, existing.id));
+      }
+      if (after) {
+        const dueAt = new Date(shift.workDate + 'T' + after + ':00+09:00');
+        if (dueAt >= now) await addPrompt(tx, site.id, shift, kind, dueAt);
+      }
+    }
   }
 }
 
