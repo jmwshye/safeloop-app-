@@ -26,7 +26,7 @@ data class WorkerActions(
  val export:(String,String,String,String?)->Unit,val notificationSettings:()->Unit,val notifications:(NotificationAction)->Unit,
  val shareReport:(String,String)->Unit={_,_->},val map:(Double,Double)->Unit={_,_->},val phone:(String)->Unit={},
  val dialIncident:(String)->Unit={},val checkLocation:()->Unit={},val onboardingPermissions:()->Unit={},
- val locate:((android.location.Location?)->Unit)->Unit={it(null)},val cameraResult:CapturedImage?=null,val consumeCamera:()->Unit={}
+ val locate:((android.location.Location?)->Unit)->Unit={it(null)},val cameraResult:CapturedImage?=null,val consumeCamera:()->Unit={},val record:(String)->Unit={}
 )
 
 // 오늘 탭은 상태마다 화면이 하나다 (와이어프레임 7장). 호출 카드는 모든 상태에서 맨 위.

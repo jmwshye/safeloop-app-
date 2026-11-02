@@ -49,7 +49,7 @@ object SafetyAlarm {
         vibrate(app)
         if (voice != null) SafetySpeech.say(app, voice)
         ringAfter(app, if (voice != null && SafetySpeech.enabled(app)) VOICE_MS else 0)
-        startTorch(app)
+        if (!SituationRecorder.active) startTorch(app)
         beaconOn = true
         handler.postDelayed(stopLater, durationMs)
     }

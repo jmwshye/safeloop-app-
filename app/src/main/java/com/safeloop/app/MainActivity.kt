@@ -90,7 +90,7 @@ class MainActivity:ComponentActivity(){
      attend={requestLocation(LocationPurpose.CHECK_IN)},monitor={enabled->if(enabled)notifications(NotificationAction.MONITOR)else controller.setMonitoring(false)},
      export=::exportRecords,notificationSettings=::notificationSettings,notifications=::notifications,shareReport=::shareReport,map=::openMap,phone=::callPhone,dialIncident={dial(it)},
      checkLocation={requestLocation(LocationPurpose.CHECK_ONLY)},locate={callback->if(locationRequest==null){responderLocation=callback;requestLocation(LocationPurpose.RESPONDER)}else controller.feedback="위치 확인 중이에요."},
-     onboardingPermissions=::requestSetupPermissions))}}
+     onboardingPermissions=::requestSetupPermissions,record=::recordSituation))}}
   }
  }
  override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);handleIntent(intent)}
@@ -119,6 +119,12 @@ class MainActivity:ComponentActivity(){
   if(Build.VERSION.SDK_INT>=33&&ContextCompat.checkSelfPermission(this,Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){if(notificationAction!=null)return;notificationAction=action;notificationScope=controller.captureScope;notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}
   else if(!NotificationManagerCompat.from(this).areNotificationsEnabled())controller.feedback="앱 알림이 차단되어 있어요. 내 정보에서 알림을 허용해 주세요."
   else performNotificationAction(action)
+ }
+ // 화면이 꺼지면 카메라가 멈추므로 녹화하는 동안만 켜 둔다.
+ private fun recordSituation(callId:String){
+  if(!SituationRecorder.enabled(this)||ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)return
+  window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+  SituationRecorder.start(this,callId){seconds->window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);controller.noteVideo(seconds)}
  }
  private fun requestSetupPermissions(){
   val permissions=mutableListOf(Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO)

@@ -11,6 +11,14 @@ fun helpRequested(text: String): Boolean {
     return spoken.isNotEmpty() && !NEGATED.containsMatchIn(spoken) && HELP.containsMatchIn(spoken)
 }
 
+private val OKAY = Regex("(?:네\\s?|저\\s?|나\\s?)?(?:괜찮아요?|괜찮습니다|괜찮아|멀쩡해요)[.!~\\s]*")
+
+/** 짧게 괜찮다고 답한 말만 인정한다. 문장 속 괜찮다는 말이나 옆 사람 대화로 경보가 꺼지면 안 되고, 도움 요청이 항상 먼저다. */
+fun okayRequested(text: String): Boolean {
+    val spoken = text.replace(Regex("\\s+"), " ").trim()
+    return !helpRequested(spoken) && OKAY.matches(spoken)
+}
+
 data class RiskSpeech(val category: String, val zone: String?, val note: String)
 
 private val RISK_WORDS = listOf(

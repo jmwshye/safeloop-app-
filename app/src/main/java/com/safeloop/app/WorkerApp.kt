@@ -41,7 +41,7 @@ import androidx.compose.ui.window.DialogProperties
  // 15초 안에 응답하지 못했거나 도움을 요청하면 3-3 화면을 바로 띄운다.
  val ownCall=state.calls.firstOrNull{it.isSubject(state.uid)&&it.stage=="peer"&&it.status!="closed"}?.id
  val appContext=LocalContext.current
- LaunchedEffect(ownCall){if(ownCall!=null){open("call:$ownCall");if(state.calls.any{it.id==ownCall&&controller.now-it.deadline<60_000})SafetyAlarm.beacon(appContext,voice=SafetySpeech.CALLING)}else if(SafetyAlarm.beaconOn)SafetyAlarm.stop()}
+ LaunchedEffect(ownCall){if(ownCall!=null){open("call:$ownCall");if(state.calls.any{it.id==ownCall&&controller.now-it.deadline<60_000})SafetyAlarm.beacon(appContext,voice=if(SituationRecorder.active)SafetySpeech.RECORDING else SafetySpeech.CALLING)}else{if(SafetyAlarm.beaconOn)SafetyAlarm.stop();if(SituationRecorder.active)SituationRecorder.stop()}}
  val onboarding=controller.onboarding
  if(onboarding!=null){WorkerOnboarding(onboarding,controller,actions);return}
  BackHandler(enabled=page!=WorkerPage.TODAY&&sheet==null){navigate(WorkerPage.TODAY)}
@@ -108,7 +108,7 @@ import androidx.compose.ui.window.DialogProperties
    activeSheet=="high-risk"->HighRiskSheet(state,controller.busy){controller.highRisk(it);sheet=null}
    activeSheet=="carried"->{SmallNote("기기를 몸에 휴대하지 않으면 움직임 감지가 불가능해요.",amber=true);SLButton(if(state.carried)"기기를 휴대하지 않아요" else "지금 몸에 휴대하고 있어요",{controller.setCarried(!state.carried);sheet=null},enabled=!controller.busy)}
    activeSheet.startsWith("prompt:")->PromptSheet(state.prompts.firstOrNull{it.id==activeSheet.removePrefix("prompt:")},controller.busy){answer->controller.answerPrompt(activeSheet.removePrefix("prompt:"),answer);sheet=null}
-   activeSheet=="notifications"->{Row(verticalAlignment=Alignment.CenterVertically){Text("긴급 안전 확인",Modifier.weight(1f));Switch(state.emergencyPush,{controller.notificationPreferences(it,state.sitePush)},enabled=!controller.busy)};Row(verticalAlignment=Alignment.CenterVertically){Text("현장 점검·조치 알림",Modifier.weight(1f));Switch(state.sitePush,{controller.notificationPreferences(state.emergencyPush,it)},enabled=!controller.busy)};VoiceSetting();SLButton("휴대폰 알림 권한 설정",actions.notificationSettings,secondary=true)}
+   activeSheet=="notifications"->{Row(verticalAlignment=Alignment.CenterVertically){Text("긴급 안전 확인",Modifier.weight(1f));Switch(state.emergencyPush,{controller.notificationPreferences(it,state.sitePush)},enabled=!controller.busy)};Row(verticalAlignment=Alignment.CenterVertically){Text("현장 점검·조치 알림",Modifier.weight(1f));Switch(state.sitePush,{controller.notificationPreferences(state.emergencyPush,it)},enabled=!controller.busy)};VoiceSetting();SituationSetting();SLButton("휴대폰 알림 권한 설정",actions.notificationSettings,secondary=true)}
    activeSheet=="export"->ExportSheet(state,actions.export,actions.shareReport,controller::loadMoreIncidents){sheet="report:$it"}
    activeSheet.startsWith("event:")->{val entry=state.events.firstOrNull{it.id==activeSheet.removePrefix("event:")};if(entry!=null){EventRow(entry,state.preview);DetailRow("원본 기록 ID",entry.id);if(entry.hash.isNotBlank())DetailRow("기록 연결값",entry.hash.take(12));DetailRow("서버 저장 시각",java.time.Instant.ofEpochMilli(entry.time).atZone(koreaZone).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));if(state.preview||entry.canCorrect){var note by remember(entry.id){mutableStateOf("")};SLField("정정할 내용",note,{note=it},singleLine=false);SLButton("원본을 보존하고 정정 요청",{controller.correctEvent(entry.id,note);sheet=null},enabled=!controller.busy&&note.isNotBlank())}}}
    activeSheet=="corrections"->{if(state.corrections.isEmpty())SmallNote("정정 요청이 없어요.");state.corrections.forEach{Text(it,color=Ink)}}
@@ -118,7 +118,7 @@ import androidx.compose.ui.window.DialogProperties
    activeSheet=="disconnect"->{Text("체험 모드로 전환할까요?",fontSize=20.sp,fontWeight=FontWeight.Bold,color=Ink);Text("현장 연결과 감시를 종료합니다. 서버의 기존 근로·안전 기록은 보존돼요.",fontSize=15.sp,lineHeight=26.sp,color=Muted);SLButton("체험 모드로 전환",{controller.usePreview();sheet=null})}
   }
  }}
- state.selfCall?.let{call->SelfCheckDialog(call,controller.now,controller.incidentBusy(call.id),{controller.respond(call.id,"safe")},{controller.respond(call.id,"help")},{actions.dialIncident(call.id)},state.preview)}
+ state.selfCall?.let{call->SelfCheckDialog(call,controller.now,controller.incidentBusy(call.id),{controller.respond(call.id,"safe")},{controller.respond(call.id,"help");actions.record(call.id)},{controller.respondByVoice(call.id)},{actions.dialIncident(call.id)},state.preview)}
 }
 
 private fun sheetTitle(route:String)=when{
@@ -154,10 +154,10 @@ private fun sheetTitle(route:String)=when{
 }
 
 // 3-1 본인 확인 15초. 탭을 숨기고 괜찮아요와 119만 크게 보여준다.
-@Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now);val bars=WindowInsets.safeDrawing.asPaddingValues();val context=LocalContext.current
+@Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onVoiceSafe:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now);val bars=WindowInsets.safeDrawing.asPaddingValues();val context=LocalContext.current
  // 마이크를 쓰면 알람 대신 진동과 음성으로 알리고, 도움 요청 말을 듣는다.
- val canListen=remember{VoiceListener.hasMicrophone(context)&&VoiceListener.available(context)};val askHelp by rememberUpdatedState(onHelp)
- DisposableEffect(call.id){var asked=false;SafetyAlarm.start(context,remaining*1000,SafetySpeech.SELF_CHECK,ring=!canListen);val listener=VoiceListener(context,continuous=true,onPartial={if(!asked&&helpRequested(it)){asked=true;askHelp()}});if(canListen)listener.start(5_000);onDispose{listener.stop();SafetyAlarm.stop()}}
+ val canListen=remember{VoiceListener.hasMicrophone(context)&&VoiceListener.available(context)};val askHelp by rememberUpdatedState(onHelp);val sayOkay by rememberUpdatedState(onVoiceSafe)
+ DisposableEffect(call.id){var asked=false;SafetyAlarm.start(context,remaining*1000,SafetySpeech.SELF_CHECK,ring=!canListen);val listener=VoiceListener(context,continuous=true,onPartial={if(!asked&&helpRequested(it)){asked=true;askHelp()}},onFinal={if(!asked&&okayRequested(it)){asked=true;sayOkay()}});if(canListen)listener.start(5_000);onDispose{listener.stop();SafetyAlarm.stop()}}
  Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false,usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
   Surface(Modifier.fillMaxSize(),color=Color.White){Column(Modifier.fillMaxSize().padding(bars)){
    TapeStrip()
@@ -167,7 +167,7 @@ private fun sheetTitle(route:String)=when{
     Text("안전 상태를 확인해 주세요.",fontSize=16.sp,color=Muted)
     Box(Modifier.size(190.dp).align(Alignment.CenterHorizontally),contentAlignment=Alignment.Center){CircularProgressIndicator(progress={(remaining/15f).coerceIn(0f,1f)},modifier=Modifier.fillMaxSize(),color=Danger,trackColor=DangerSoft,strokeWidth=12.dp);Column(horizontalAlignment=Alignment.CenterHorizontally){Text("$remaining",fontSize=76.sp,lineHeight=84.sp,fontWeight=FontWeight.ExtraBold,color=Danger);Text("초 안에 눌러 주세요",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)}}
     Text(if(remaining>0)"응답이 없으면 안전 동료와 반장님께 알림이 가요." else "응답 시간이 지났어요. 서버 연결 상태를 확인해 주세요.",Modifier.fillMaxWidth(),fontSize=14.sp,lineHeight=22.sp,color=Muted,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
-    if(canListen)NoteText("움직이기 어려우면 '도와줘'라고 말하세요.",center=true)
+    if(canListen)NoteText("말로도 답할 수 있어요. '괜찮아요' 또는 '도와줘'",center=true)
     Spacer(Modifier.weight(1f))
     SLButton("괜찮아요",onSafe,enabled=!busy,icon="check",color=Ok)
     SLButton("119 전화",onDial,icon="phone",color=Danger)

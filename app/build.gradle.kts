@@ -51,4 +51,7 @@ dependencies {
  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
  implementation("androidx.work:work-runtime-ktx:2.10.0")
  implementation("com.google.mediapipe:tasks-vision:0.10.14")
+ implementation("androidx.camera:camera-camera2:1.4.1")
+ implementation("androidx.camera:camera-lifecycle:1.4.1")
+ implementation("androidx.camera:camera-video:1.4.1")
 }

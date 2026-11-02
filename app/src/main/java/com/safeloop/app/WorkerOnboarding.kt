@@ -125,7 +125,7 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
                     PageHeading("가입 4 / 4", "이 권한이 필요해요", "필요한 때만 쓰고, 이유를 먼저 알려 드려요.")
                     FlatBox {
                         listOf(Triple("알림", "긴급 호출을 놓치지 않으려고요", true), Triple("움직임 감지", "충격을 감지하고, 켜져 있음을 알림으로 보여요", true),
-                            Triple("위치", "출근 확인과 긴급 상황에서만 써요", false), Triple("카메라", "동료·위험 요소 촬영. 얼굴은 자동으로 가려요", false), Triple("마이크", "말로 도움을 요청할 때만 들어요. 녹음은 저장하지 않아요", false)).forEachIndexed { i, (name, why, needed) ->
+                            Triple("위치", "출근 확인과 긴급 상황에서만 써요", false), Triple("카메라", "동료·위험 요소 촬영, 도움 요청 때 상황 영상. 소리는 남기지 않아요", false), Triple("마이크", "말로 도움을 요청할 때만 들어요. 녹음은 저장하지 않아요", false)).forEachIndexed { i, (name, why, needed) ->
                             if (i > 0) HorizontalDivider(color = Line)
                             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Column(Modifier.weight(1f)) { Text(name, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Ink); Text(why, fontSize = 14.sp, lineHeight = 21.sp, color = Muted) }

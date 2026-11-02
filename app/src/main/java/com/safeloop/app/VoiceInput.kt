@@ -28,7 +28,7 @@ import androidx.core.content.ContextCompat
  * 폰의 음성 인식으로 듣는다. 녹음을 저장하지 않고 글자만 넘겨받는다.
  * 인식 서비스나 권한이 없으면 아무 일도 하지 않으므로 화면과 버튼은 그대로 동작한다.
  */
-class VoiceListener(context: Context, private val continuous: Boolean, private val onPartial: (String) -> Unit, private val onDone: (String) -> Unit = {}) {
+class VoiceListener(context: Context, private val continuous: Boolean, private val onPartial: (String) -> Unit, private val onDone: (String) -> Unit = {}, private val onFinal: (String) -> Unit = {}) {
     private val app = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
@@ -69,7 +69,7 @@ class VoiceListener(context: Context, private val continuous: Boolean, private v
 
     private val callback = object : RecognitionListener {
         override fun onPartialResults(partialResults: Bundle?) { best(partialResults).takeIf { it.isNotBlank() }?.let { heard = it; onPartial(it) } }
-        override fun onResults(results: Bundle?) { best(results).takeIf { it.isNotBlank() }?.let { heard = it; onPartial(it) }; nextRound() }
+        override fun onResults(results: Bundle?) { best(results).takeIf { it.isNotBlank() }?.let { heard = it; onPartial(it); onFinal(it) }; nextRound() }
         override fun onError(error: Int) = nextRound()
         override fun onReadyForSpeech(params: Bundle?) = Unit
         override fun onBeginningOfSpeech() = Unit

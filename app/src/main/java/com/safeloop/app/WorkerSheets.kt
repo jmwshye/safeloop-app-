@@ -138,7 +138,7 @@ private val WarnInk=Color(0xFF5E3A00)
  OnCameraResult(actions,"scene",c.id){photo=it.path}
  when{
   c.status=="closed"->CallClosed(c,s)
-  c.isSubject(s.uid)->CallingPeers(c,s,now,busy,onDial,actions.phone,onFailed,onRespond)
+  c.isSubject(s.uid)->CallingPeers(c,s,now,busy,onDial,actions.phone,onFailed,{actions.record(c.id)},onRespond)
   c.acceptedBy!=null&&c.acceptedBy!=s.uid->{ScreenHead("다른 동료가\n확인 중이에요","본인의 안전을 먼저 확보해 주세요.");FlatCard(listOf("작업자" to c.subjectName,"위치" to c.zone))}
   c.acceptedBy==null->IncomingCall(c,s,now,busy,actions,onFailed,onRespond)
   c.arrivedAt==null->GoingToCall(c,s,busy,actions,onRespond)
@@ -146,7 +146,7 @@ private val WarnInk=Color(0xFF5E3A00)
   else->WrapUpCall(c,busy,photo,actions,onRespond)
  }
 }
-@Composable private fun CallingPeers(c:WorkerCall,s:WorkerState,now:Long,busy:Boolean,onDial:()->Unit,onPhone:(String)->Unit,onFailed:()->Unit,onRespond:(String,String?)->Unit){
+@Composable private fun CallingPeers(c:WorkerCall,s:WorkerState,now:Long,busy:Boolean,onDial:()->Unit,onPhone:(String)->Unit,onFailed:()->Unit,onRecord:()->Unit,onRespond:(String,String?)->Unit){
  SLPill("안전 미확인",amber=true,estimate=true)
  ScreenHead("동료를 부르고 있어요","안전 동료와 반장님께 알렸어요. 움직일 수 있으면 119를 누르세요.")
  FlatBox{
@@ -154,11 +154,13 @@ private val WarnInk=Color(0xFF5E3A00)
   else if(c.recipients.isEmpty())StepRow("호출 대상을 확인하고 있어요"){SLPill("대기",neutral=true)}
   else c.recipients.forEachIndexed{i,recipient->if(i>0)HorizontalDivider(color=Line);CallRow(recipient.name,recipientRole(recipient.role),recipientStatus(recipient))}
  }
+ if(SituationRecorder.active){SLPill("영상 녹화 중 · 소리 없음",danger=true);GhostButton("녹화 끄기",{SituationRecorder.stop()})}
+ SituationVideo(c.id)
  if(c.acceptedBy!=null)SmallNote("동료가 확인하러 오고 있어요.")
  if(c.serverStatus=="unanswered"){SmallNote("수락한 사람이 없어요. 주변 동료나 반장에게 직접 연락하세요.",amber=true);SLButton("동료에게 다시 요청",{onRespond("retry",null)},enabled=!busy,secondary=true)}
  SLButton("119 전화",onDial,color=Danger,large=true,icon="phone")
  SLButton("괜찮아요, 제가 응답할게요",{onRespond("safe",null)},enabled=!busy,secondary=true)
- if(c.workerResponse=="okay")GhostButton("도움이 필요해요",{onRespond("help",null)},enabled=!busy)
+ if(c.workerResponse=="okay")GhostButton("도움이 필요해요",{onRespond("help",null);onRecord()},enabled=!busy)
  s.foremanPhone?.let{phone->SLButton("반장님께 전화",{onPhone(phone)},secondary=true,icon="phone")}
  if(SafetyAlarm.beaconOn)GhostButton("사이렌·손전등 끄기",{SafetyAlarm.stop()})
  if(s.preview)GhostButton("체험: 호출 실패 화면 보기",onFailed)
@@ -223,6 +225,7 @@ private fun recipientStatus(r:CallRecipient)=when{r.declinedAt!=null->"참여 �
   c.observation?.let{add("직접 확인한 상태" to (mapOf("unconscious" to "의식 없음","immobile" to "움직이기 어려움","conscious" to "의식 있음","appears_safe" to "안전해 보임")[it]?:it))}
  })
  c.recipients.forEach{DetailRow(it.name,recipientStatus(it))}
+ if(c.isSubject(s.uid))SituationVideo(c.id)
  if(c.photoId==null&&c.photo==null)SmallNote("현장 사진 없음 · 사진은 선택 항목") else c.photo?.let{PhotoPreview(it)}
  if(s.preview)NoteText("이 기기의 체험 기록이에요. 실제 사고나 신고를 입증하지 않아요.")
 }
@@ -319,6 +322,7 @@ private fun recipientStatus(r:CallRecipient)=when{r.declinedAt!=null->"참여 �
   c.dialTimes.lastOrNull()?.let{TimelineRow(clockText(it),"119 전화 화면 열림","통화 연결 여부는 별도 확인 필요")}
  }
  c.photo?.let{PhotoPreview(it)}
+ SituationVideo(c.id)
  Surface13("본 보고서는 시스템에 수집된 사실과 사용자 입력을 구분하여 정리한 자료이며, 법률상 의무 이행 여부 또는 사고 원인에 관한 판단을 대신하지 않습니다.")
  NoteText("원본 사건 ID ${c.id.take(8)} · 정정 이력 없음")
  SLButton("PDF 만들기",onPdf,icon="download")
@@ -328,7 +332,7 @@ private fun recipientStatus(r:CallRecipient)=when{r.declinedAt!=null->"참여 �
 // 6-2 기록과 개인정보
 @Composable fun PrivacySheet(preview:Boolean){
  ScreenHead("기록은\n내 것이에요")
- FlatBox{listOf("근로 기록" to "출퇴근, 근무 시간, 예상 일당","확인 기록과 사진" to "동료와 서로 찍은 사진, 위험 신고","위치" to "출근 확인과 긴급 상황에서만 써요","움직임 센서" to "이상 신호 전후의 짧은 구간만 저장해요","마이크" to "말로 도움을 요청하고 신고할 때만 듣고, 녹음은 저장하지 않아요","사진 속 얼굴" to "폰 안에서 자동으로 가리고 밖으로 보내지 않아요").forEachIndexed{i,(title,detail)->if(i>0)HorizontalDivider(color=Line);Column(Modifier.padding(vertical=12.dp)){Text(title,fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(detail,fontSize=14.sp,lineHeight=22.sp,color=Muted)}}}
+ FlatBox{listOf("근로 기록" to "출퇴근, 근무 시간, 예상 일당","확인 기록과 사진" to "동료와 서로 찍은 사진, 위험 신고","위치" to "출근 확인과 긴급 상황에서만 써요","움직임 센서" to "이상 신호 전후의 짧은 구간만 저장해요","마이크" to "말로 답하고 신고할 때만 듣고, 녹음은 저장하지 않아요","상황 영상" to "도움을 요청하면 소리 없이 30초 찍어 이 폰에만 저장해요","사진 속 얼굴" to "폰 안에서 자동으로 가리고 밖으로 보내지 않아요").forEachIndexed{i,(title,detail)->if(i>0)HorizontalDivider(color=Line);Column(Modifier.padding(vertical=12.dp)){Text(title,fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(detail,fontSize=14.sp,lineHeight=22.sp,color=Muted)}}}
  SLCard(color=OkSoft){Text("내가 할 수 있는 일",fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("· 언제든 내 기록을 보고 내보낼 수 있어요\n· 사업주는 내 기록을 지울 수 없어요\n· 위험 신고는 이름을 숨길 수 있어요",fontSize=14.sp,lineHeight=22.sp,color=Ink)}
  if(preview)SmallNote("체험 모드의 기록과 사진은 이 기기에만 저장돼요. 실제 현장에 전송되지 않습니다.")
  NoteText("119 버튼은 전화 화면을 열어요. 실제 통화 연결이나 신고 접수를 증명하지 않아요.")

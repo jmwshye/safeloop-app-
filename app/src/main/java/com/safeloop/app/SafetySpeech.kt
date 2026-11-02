@@ -12,6 +12,7 @@ import java.util.Locale
 object SafetySpeech {
     const val SELF_CHECK = "강한 충격이 감지되었어요. 괜찮으시면 화면의 괜찮아요를 눌러 주세요."
     const val CALLING = "동료를 부르고 있어요. 움직일 수 있으면 119를 누르세요."
+    const val RECORDING = "도움을 요청했어요. 상황을 영상으로 남기고 있어요."
     const val CHECK_IN = "안전하신가요? 괜찮으시면 앱에서 괜찮아요를 눌러 주세요."
     const val PEER_ALERT = "동료 안전 확인 요청이 왔어요. 내 안전을 먼저 확보하세요."
 
