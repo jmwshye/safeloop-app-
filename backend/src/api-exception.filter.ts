@@ -33,6 +33,11 @@ const attendanceErrors: Record<number, { code: string; message: string }> = {
   },
 };
 
+const siteErrors: Record<number, { code: string; message: string }> = {
+  401: attendanceErrors[401],
+  404: { code: 'SITE_NOT_FOUND', message: '현장을 찾을 수 없어요.' },
+};
+
 @Injectable()
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -45,7 +50,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const path = request.path.toLowerCase();
     const isAttendance =
       path === '/attendances' || path.startsWith('/attendances/');
-    if (!path.startsWith('/auth/') && !isAttendance) {
+    const isSite = path.startsWith('/sites/');
+    if (!path.startsWith('/auth/') && !isAttendance && !isSite) {
       new BaseExceptionFilter(this.adapterHost.httpAdapter).catch(
         exception,
         host,
@@ -56,7 +62,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
       exception instanceof HttpException ? exception.getStatus() : 500;
     if (status >= 500) this.logger.error('API 요청 처리 중 서버 오류 발생');
     // SQL·비밀번호·토큰이 포함될 수 있는 내부 예외는 응답이나 로그에 출력하지 않는다.
-    const error = (isAttendance ? attendanceErrors[status] : undefined) ??
+    const error = (isSite ? siteErrors[status] : undefined) ??
+      (isAttendance ? attendanceErrors[status] : undefined) ??
       errors[status] ?? {
         code: 'SERVER_ERROR',
         message: '서버 오류가 발생했어요. 잠시 후 다시 시도해 주세요.',

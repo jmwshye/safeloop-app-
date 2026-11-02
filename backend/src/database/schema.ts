@@ -5,6 +5,7 @@ import {
   index,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -43,6 +44,37 @@ export const sessions = pgTable(
       .notNull(),
   },
   (table) => [index('sessions_user_id_idx').on(table.userId)],
+);
+
+export const sites = pgTable(
+  'sites',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    code: text('code').notNull().unique(),
+    name: text('name').notNull(),
+    foremanUserId: uuid('foreman_user_id')
+      .notNull()
+      .references(() => users.id),
+  },
+  (table) => [
+    check(
+      'sites_code_format',
+      sql`length(${table.code}) <= 12 AND ${table.code} ~ '^[A-Z0-9]+(-[A-Z0-9]+)*$'`,
+    ),
+  ],
+);
+
+export const siteMemberships = pgTable(
+  'site_memberships',
+  {
+    siteId: uuid('site_id')
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (table) => [primaryKey({ columns: [table.siteId, table.userId] })],
 );
 
 export const safetyAnswer = pgEnum('safety_answer', [

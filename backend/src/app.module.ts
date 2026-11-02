@@ -8,8 +8,10 @@ import { ApiExceptionFilter } from './api-exception.filter.js';
 import { AttendanceModule } from './attendance/attendance.module.js';
 import { HealthController } from './health.controller.js';
 
+import { SitesModule } from './sites/sites.module.js';
+
 @Module({
-  imports: [DatabaseModule, AuthModule, AttendanceModule],
+  imports: [DatabaseModule, AuthModule, AttendanceModule, SitesModule],
   controllers: [AppController, HealthController],
   providers: [
     AppService,

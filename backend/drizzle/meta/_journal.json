@@ -15,6 +15,13 @@
       "when": 1793292307036,
       "tag": "0001_attendance",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793536864157,
+      "tag": "0002_site_membership",
+      "breakpoints": true
     }
   ]
 }
