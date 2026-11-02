@@ -1,0 +1,51 @@
+{
+  "name": "safeloop-backend",
+  "version": "0.0.1",
+  "description": "SAFELOOP Android 앱용 NestJS 서버",
+  "author": "",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "build": "nest build",
+    "format": "prettier --write src/ test/ drizzle.config.ts",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main.js",
+    "lint": "oxlint --type-aware src/",
+    "format:check": "prettier --check src/ test/ drizzle.config.ts",
+    "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node dist/migrate.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/throttler": "6.7.1",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "4.6.7"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.11",
+    "@nestjs/schematics": "^12.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "oxlint": "^1.58.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "prettier": "^3.4.2",
+    "source-map-support": "^0.5.21",
+    "typescript": "^6.0.2"
+  }
+}
