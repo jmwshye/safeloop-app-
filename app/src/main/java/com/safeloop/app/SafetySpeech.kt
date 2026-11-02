@@ -2,10 +2,7 @@ package com.safeloop.app
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.os.Handler
-import android.os.Looper
 import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -23,8 +20,6 @@ object SafetySpeech {
     private var engine: TextToSpeech? = null
     private var ready = false
     private var pending: String? = null
-    private val handler = Handler(Looper.getMainLooper())
-    private var afterDone: Runnable? = null
     /** 한국어 음성을 쓸 수 없는 폰이면 true. 이때는 진동과 소리로만 알린다. */
     var unavailable by mutableStateOf(false)
         private set
@@ -47,11 +42,6 @@ object SafetySpeech {
                 if (ready) {
                     voice?.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-                    voice?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) = Unit
-                        override fun onDone(utteranceId: String?) { handler.post(::runAfterDone) }
-                        @Deprecated("Deprecated in Java") override fun onError(utteranceId: String?) { handler.post(::runAfterDone) }
-                    })
                     pending?.let(::speak)
                 }
                 pending = null
@@ -67,17 +57,6 @@ object SafetySpeech {
     }
 
     private fun speak(text: String) { runCatching { engine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "safety") } }
-
-    /** 안내 음성이 끝나면 실행한다. 음성이 없거나 응답이 없으면 maxWaitMs 뒤에 실행한다. */
-    fun afterSpeech(context: Context, maxWaitMs: Long, action: () -> Unit) {
-        val task = Runnable { afterDone?.let(handler::removeCallbacks); afterDone = null; action() }
-        afterDone = task
-        handler.postDelayed(task, if (enabled(context)) maxWaitMs else 0)
-    }
-
-    private fun runAfterDone() { afterDone?.let { handler.removeCallbacks(it); it.run() } }
-
-    fun cancelAfterSpeech() { afterDone?.let(handler::removeCallbacks); afterDone = null }
 
     fun stop() {
         pending = null

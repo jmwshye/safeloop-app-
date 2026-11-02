@@ -14,10 +14,14 @@ fun helpRequested(text: String): Boolean {
 private const val OKAY_WORD = "(?:괜찮\\s?아\\s?요?|괜찮습니다|괜찬아\\s?요?|멀쩡해요)"
 private val OKAY = Regex("(?:(?:네|예|응|저|나)\\s?)*$OKAY_WORD(?:[.!~,\\s]*$OKAY_WORD)*[.!~\\s]*")
 
+/** 안내 음성이 나오는 중에도 들으므로 마이크에 섞인 안내 문구는 빼고 판단한다. */
+private val PROMPT_WORDS = setOf("강한", "충격이", "충격", "감지되었어요", "감지됐어요", "감지", "되었어요", "상태를", "말씀해", "주세요")
+
 /** 짧게 괜찮다고 답한 말만 인정한다. 문장 속 괜찮다는 말이나 옆 사람 대화로 경보가 꺼지면 안 되고, 도움 요청이 항상 먼저다. */
 fun okayRequested(text: String): Boolean {
     val spoken = text.replace(Regex("\\s+"), " ").trim()
-    return !helpRequested(spoken) && OKAY.matches(spoken)
+    if (helpRequested(spoken)) return false
+    return OKAY.matches(spoken.split(" ").filterNot { it in PROMPT_WORDS }.joinToString(" "))
 }
 
 data class RiskSpeech(val category: String, val zone: String?, val note: String)

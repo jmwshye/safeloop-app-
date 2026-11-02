@@ -159,9 +159,9 @@ private fun sheetTitle(route:String)=when{
 
 // 3-1 본인 확인 15초. 탭을 숨기고 괜찮아요와 119만 크게 보여준다.
 @Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onVoiceSafe:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now);val bars=WindowInsets.safeDrawing.asPaddingValues();val context=LocalContext.current
- // 마이크를 쓰면 알람 대신 진동과 음성으로 알리고, 도움 요청 말을 듣는다.
+ // 마이크를 쓰면 처음부터 듣는다. 안내 음성이 나오는 중에 답해도 된다.
  val canListen=remember{VoiceListener.hasMicrophone(context)&&VoiceListener.available(context)};val askHelp by rememberUpdatedState(onHelp);val sayOkay by rememberUpdatedState(onVoiceSafe)
- DisposableEffect(call.id){var asked=false;SafetyAlarm.start(context,remaining*1000,SafetySpeech.SELF_CHECK,ring=!canListen);val listener=VoiceListener(context,continuous=true,onPartial={if(!asked&&helpRequested(it)){asked=true;askHelp()}},onFinal={if(!asked&&okayRequested(it)){asked=true;sayOkay()}},onGap={SafetyAlarm.pulse(context)});if(canListen)SafetySpeech.afterSpeech(context,4_000){SafetyAlarm.pauseVibration();listener.start()};onDispose{SafetySpeech.cancelAfterSpeech();listener.stop();SafetyAlarm.stop()}}
+ DisposableEffect(call.id){var asked=false;SafetyAlarm.start(context,remaining*1000,SafetySpeech.SELF_CHECK,listening=canListen);val listener=VoiceListener(context,continuous=true,onPartial={if(!asked&&helpRequested(it)){asked=true;askHelp()}},onFinal={if(!asked&&okayRequested(it)){asked=true;sayOkay()}},onGap={SafetyAlarm.pulse(context)});if(canListen)listener.start();onDispose{listener.stop();SafetyAlarm.stop()}}
  Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false,usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
   Surface(Modifier.fillMaxSize(),color=Color.White){Column(Modifier.fillMaxSize().padding(bars)){
    TapeStrip()

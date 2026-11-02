@@ -13,6 +13,15 @@ class SafetyTextTest {
     @Test fun shortOkayAnswersCount() {
         listOf("괜찮아", "괜찮아요", "괜찮아 요", "괜찮습니다", "네 괜찮아요", "저 괜찮아요.", "멀쩡해요", "괜찮아요 괜찮아요", "네 네 괜찮아요", "응 괜찮아").forEach { assertTrue(it, okayRequested(it)) }
     }
+    @Test fun answersCountEvenWhenThePromptIsHeardToo() {
+        listOf("강한 충격이 감지되었어요 괜찮아", "상태를 말씀해 주세요 괜찮아요", "괜찮아 상태를 말씀해 주세요").forEach { assertTrue(it, okayRequested(it)) }
+        assertTrue(helpRequested("강한 충격이 감지되었어요 도와줘"))
+    }
+    @Test fun thePromptAloneNeverAnswers() {
+        val prompt = "강한 충격이 감지되었어요. 상태를 말씀해 주세요."
+        assertFalse(okayRequested(prompt.replace(".", ""))); assertFalse(helpRequested(prompt))
+        assertFalse(okayRequested("상태를 말씀해 주세요"))
+    }
     @Test fun okayInsideOtherTalkDoesNotStopTheCall() {
         listOf("", "안 괜찮아요", "괜찮지 않아", "괜찮아요 도와주세요", "저기 괜찮아요 여기로 가져오세요", "그거 괜찮아 보여", "도와줘").forEach { assertFalse(it, okayRequested(it)) }
     }

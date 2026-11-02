@@ -32,13 +32,13 @@ object SafetyAlarm {
     var beaconOn by mutableStateOf(false)
         private set
 
-    /** 안내 음성을 먼저 읽고 알람을 울린다. 말소리를 들어야 할 때는 ring=false로 진동만 쓴다. */
-    @Synchronized fun start(context: Context, durationMs: Long = 15_000, voice: String? = null, ring: Boolean = true) {
+    /** 안내 음성을 먼저 읽고 알람을 울린다. 말소리를 들어야 할 때는 listening=true로 처음에 한 번만 진동한다. 진동음을 마이크가 말로 착각한다. */
+    @Synchronized fun start(context: Context, durationMs: Long = 15_000, voice: String? = null, listening: Boolean = false) {
         stop()
         val app = context.applicationContext
-        vibrate(app)
+        if (listening) pulse(app, 700) else vibrate(app)
         if (voice != null) SafetySpeech.say(app, voice)
-        if (ring) ringAfter(app, if (voice != null && SafetySpeech.enabled(app)) VOICE_MS else 0)
+        if (!listening) ringAfter(app, if (voice != null && SafetySpeech.enabled(app)) VOICE_MS else 0)
         handler.postDelayed(stopLater, durationMs.coerceAtLeast(1_000))
     }
 
@@ -54,17 +54,11 @@ object SafetyAlarm {
         handler.postDelayed(stopLater, durationMs)
     }
 
-    /** 말을 듣는 동안 진동음이 마이크에 들어가지 않게 진동만 멈춘다. */
-    @Synchronized fun pauseVibration() {
-        runCatching { vibrator?.cancel() }
-        vibrator = null
-    }
-
     /** 듣기가 다시 시작되는 틈에 짧게 울려 주머니 속에서도 알 수 있게 한다. */
-    fun pulse(context: Context) { runCatching {
+    fun pulse(context: Context, durationMs: Long = 250) { runCatching {
         val app = context.applicationContext
         val device = if (Build.VERSION.SDK_INT >= 31) app.getSystemService(VibratorManager::class.java).defaultVibrator else app.getSystemService(Vibrator::class.java)
-        device.vibrate(VibrationEffect.createOneShot(250, VibrationEffect.DEFAULT_AMPLITUDE), alarmSound)
+        device.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE), alarmSound)
     } }
 
     @Synchronized fun stop() {
