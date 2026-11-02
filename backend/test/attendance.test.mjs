@@ -57,6 +57,7 @@ test(
     let original;
     let otherAttendance;
     let currentAttendance;
+    const siteId = randomUUID();
     let serverTime = Date.parse('2026-10-30T00:00:00.000Z');
     let advancePerRead = 0;
 
@@ -70,6 +71,10 @@ test(
       try {
         await app?.close();
         // 이번 실행의 계정과 연결된 출근·점검만 정리한다.
+        await database.query('DELETE FROM attendances WHERE site_id=$1', [
+          siteId,
+        ]);
+        await database.query('DELETE FROM sites WHERE id=$1', [siteId]);
         await database.query(
           'DELETE FROM users WHERE email = ANY($1::text[])',
           [emails],
@@ -127,10 +132,19 @@ test(
 
     function expectRecord(record) {
       assert.deepEqual(Object.keys(record).sort(), [
+        'buddyUserId',
         'checkedInAt',
+        'checkedOutAt',
+        'expectedWage',
+        'highRiskStartedAt',
+        'highRiskTask',
         'id',
+        'locationStatus',
+        'occupation',
         'safetyCheck',
+        'siteId',
         'workDate',
+        'zone',
       ]);
       assert.equal(typeof record.id, 'string');
       assert.match(record.workDate, /^\d{4}-\d{2}-\d{2}$/);
@@ -167,6 +181,19 @@ test(
 
     owner = await register(emails[0]);
     other = await register(emails[1]);
+    await database.query(
+      'INSERT INTO sites(id,code,name,foreman_user_id) VALUES ($1,$2,$3,$4)',
+      [
+        siteId,
+        randomUUID().slice(0, 8).toUpperCase(),
+        '테스트 현장',
+        owner.user.id,
+      ],
+    );
+    await database.query(
+      "INSERT INTO site_memberships(site_id,user_id,occupation,zone) VALUES ($1,$2,'목공','A'),($1,$3,'목공','B')",
+      [siteId, owner.user.id, other.user.id],
+    );
 
     await t.test(
       '미출근은 null, 출근 최초 저장은 201과 서버 시각',

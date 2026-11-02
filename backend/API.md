@@ -1,23 +1,535 @@
-# SAFELOOP 앱 API
+# SAFELOOP API
 
-> 회원가입·로그인·현장 참여·출근·안전점검·상태 확인 API
+| 공통 설정 | 값 |
+| --- | --- |
+| 로컬 서버 | PC · `http://127.0.0.1:3000` / Android 에뮬레이터 · `http://10.0.2.2:3000` |
+| 연결 확인 | `GET /` → `200`, 문자열 `Hello World!` |
+| 서버·DB 상태 | `GET /health` → 정상 `200 {"status":"ok","database":"up"}`, DB 연결 실패 `503 {"status":"error","database":"down"}` |
+| 인증 헤더 | `Authorization: Bearer example-access-token` · 예시 토큰을 로그인 응답의 `accessToken`으로 교체. 회원가입·로그인·연결·상태 확인은 제외 |
+| 요청 본문 | `Content-Type: application/json`, 최대 100 KiB. 파일 전송은 해당 API의 형식 사용 |
 
-## 공통
+- **실제 Android 폰** · USB 연결 → `adb reverse tcp:3000 tcp:3000` 실행 → PC 주소 사용. 로컬 HTTP는 디버그 앱에서 허용
+- **관리자 웹** · API와 주소가 다르면 서버의 `ADMIN_WEB_ORIGIN`에 웹 주소 설정
 
-- **서버 주소:** [백엔드 README](README.md#앱에서-서버에-연결할-때)의 기본 주소에 API 경로를 연결.
-- **인증:** 회원가입·로그인·상태 확인은 로그인 토큰 없이 호출. 현장 참여와 출근·안전점검 API에는 아래 헤더 필수. 토큰·ID는 문자열 그대로 사용하며 내부 형식을 해석하지 않음.
-- **본문:** JSON을 보낼 때 `Content-Type: application/json` 지정. 명세의 필드만 전송하며 최대 **100KiB**. `GET`에는 본문 없음.
-- **응답:** JSON, 캐시하지 않음. 성공 응답의 필드는 생략하지 않으며, `null`이면 내부 필드를 읽지 않기. 비밀번호는 반환하지 않음.
-- **시각:** 서버가 정한 ISO 8601 UTC 문자열. `Z`는 UTC이며 앱에서는 한국 시각으로 표시.
-- 예시의 이름·이메일·ID·토큰은 가짜 값. `string`은 문자열, `object`는 객체.
+- **경로** · `{id}`를 각 API에서 지정한 ID로 교체
+- **재전송** · `requestId`가 필요한 작업마다 UUID 한 번 생성. 같은 작업 재전송 시 ID와 본문 유지
+- **날짜·시각** · 근무일·조회 기간은 한국 날짜 기준. 응답 시각의 `Z`는 UTC
 
-```http
-Authorization: Bearer example-access-token
+## 인증
+
+**회원가입** · `POST /auth/signup`
+
+| 요청 필드 | 필수 입력 |
+| --- | --- |
+| `name` | 이름. 앞뒤 공백을 뺀 뒤 한 글자 이상 |
+| `email` | 이메일 주소. 앞뒤 공백을 제거하고 소문자로 저장 |
+| `password` | 비밀번호. 입력한 그대로 12~20자 |
+
+- **응답** `201` · `user`에 `id`, `name`, `email`
+- **이메일 중복** · `409 EMAIL_ALREADY_EXISTS`
+
+**로그인** · `POST /auth/login`
+
+**요청 예시**
+
+```json
+{
+  "email": "worker@example.com",
+  "password": "samplePassword123"
+}
 ```
 
-### 공통 오류
+**성공 응답** · `200`
 
-인증·출근·안전점검 오류는 같은 구조이며 `error.code`·`error.message`는 문자열. **코드로 동작을 구분**하고 메시지는 안내에 사용. 메시지 문구로 분기하지 않기. 상태 확인의 `503` 응답은 아래 별도 형식 사용.
+```json
+{
+  "accessToken": "example-access-token",
+  "tokenType": "Bearer",
+  "expiresAt": "2026-11-08T00:00:00.000Z",
+  "user": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "김민수",
+    "email": "worker@example.com"
+  }
+}
+```
+
+- **로그인 유지** · 로그인부터 7일
+- **이메일·비밀번호 불일치** · `401 INVALID_CREDENTIALS`
+
+**내 계정 조회** · `GET /auth/me`
+
+- **응답** `200` · `user`. 토큰 만료 시 `401`
+- **로그아웃** · 푸시 기기 해제 → 로컬 토큰 삭제
+
+## 현장
+
+**내 현장 목록** · `GET /sites/mine`
+
+**응답** `sites[]`
+
+- **현장** · `id`, `name`, `code`, 내 `role`(`worker` 또는 `foreman`), 기준 위치 `center`(`latitude`, `longitude` 또는 미설정 시 `null`)
+- **반장** · 이름 `foremanName`, 전화번호 `foremanPhone`, 사용자 ID `foremanId`
+- **작업 정보** · 내 직종·구역·예상 일당, 휴식 복귀·교대 시각
+
+**현장 생성** · `POST /sites`
+
+| 요청 필드 | 입력 조건 |
+| --- | --- |
+| `name` | **필수** · 현장 이름 |
+| `center` | 선택 · 현장 중심 좌표. `latitude`와 `longitude`를 함께 전송 |
+| `foremanPhone` | 선택 · 반장 전화번호 |
+| `breakReturnTime` · `shiftChangeTime` | 선택 · 휴식 복귀·교대 시각. 한국 시간 `HH:mm` |
+
+- **응답** `201` · `site`(`id`, `name`, `code`)
+- **역할** · 생성자는 현장 반장. 작업자는 발급된 `code`로 참여
+
+**현장 코드 확인** · `POST /sites/lookup`
+
+- **요청** `{"code":"SS-2417"}`. 영문·숫자·중간 하이픈을 포함해 최대 12자. 대소문자 구분 없음.
+- **응답** `200`과 `site`(`id`, `name`, `foremanName`). 없는 코드는 `404 SITE_NOT_FOUND`.
+
+**현장 참여** · `POST /sites/{siteId}/join`
+
+- **요청** 경로에 코드 확인 응답의 `site.id`, 본문에 같은 `code` 전송
+- **응답** 첫 참여 `201` / 이미 참여 `200` · 두 경우 모두 `site`
+
+**내 작업 정보 저장** · `PUT /sites/{siteId}/profile`
+
+- **요청** `{"occupation":"형틀 목공","zone":"2층","expectedWage":230000}`. 직종과 구역은 필수. 예상 일당(원) 생략 또는 `null` → 미입력으로 저장.
+- **응답** `profile`에 저장된 세 값.
+
+**현장 설정 변경** · `PUT /sites/{siteId}/settings`
+
+- **권한** 현장 반장
+- **요청** 생성 때와 같은 본문으로 설정 전체 교체. 생략한 선택값은 초기화
+- **좌표 유지** `center` 조회 API 없음. 전화번호만 변경해도 유지할 좌표를 함께 전송
+- **응답** 변경된 `site`.
+
+## 출퇴근·안전점검
+
+**오늘 출근 조회** · `GET /attendances/today`
+
+**선택 쿼리** · `siteId`로 조회할 현장 지정
+
+| `200` 응답 | 의미 |
+| --- | --- |
+| `{"attendance":null}` | 오늘 출근 기록 없음 |
+| `attendance`가 있고 `safetyCheck`가 `null` | 출근 완료, 점검 전 |
+| `attendance.safetyCheck`에 값이 있음 | 출근·점검 모두 저장됨 |
+
+**출근 저장** · `POST /attendances`
+
+**출근 조건** · 하루 한 현장. GPS 권한 거절 시에도 출근 가능
+
+| 요청 필드 | 입력 조건 |
+| --- | --- |
+| `siteId` | 선택한 현장의 UUID. 참여 현장이 하나일 때만 생략 가능 |
+| `location` | 선택 · 위도 `latitude`, 경도 `longitude`, 정확도(미터) `accuracyMeters`, 측정 시각 `capturedAt`. GPS를 받지 못하면 생략 |
+
+**요청 예시 · GPS 없이 출근**
+
+```json
+{
+  "siteId": "22222222-2222-4222-8222-222222222222"
+}
+```
+
+- **첫 저장** · `201`과 출근 기록
+- **같은 날·같은 현장 재요청** · `200`과 기존 기록
+- **다음 안전점검 요청** · 출근 ID로 **`attendance.id`** 사용
+
+**출근 응답 예시**
+
+```json
+{
+  "attendance": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "siteId": "22222222-2222-4222-8222-222222222222",
+    "workDate": "2026-11-02",
+    "checkedInAt": "2026-11-01T22:51:00.000Z",
+    "checkedOutAt": null,
+    "occupation": "형틀 목공",
+    "zone": "2층",
+    "expectedWage": 230000,
+    "locationStatus": "unverified",
+    "buddyUserId": "44444444-4444-4444-8444-444444444444",
+    "highRiskTask": null,
+    "highRiskStartedAt": null,
+    "safetyCheck": null
+  }
+}
+```
+
+| `409` 오류 코드 | 다음 동작 |
+| --- | --- |
+| `SITE_PROFILE_REQUIRED` | 직종·구역을 먼저 저장 |
+| `SITE_SELECTION_REQUIRED` | 현장을 선택하고 `siteId`를 포함해 재요청 |
+| `ATTENDANCE_ALREADY_AT_OTHER_SITE` | `siteId` 없이 오늘 기록을 조회해 이미 출근한 현장 확인 |
+
+**안전점검 저장·수정** · `PUT /attendances/{id}/safety-check`
+
+- **경로의 `{id}`** · 오늘 근무 중인 **내 출근 ID**
+- **요청** · 세 항목 모두 필수
+
+| 점검 항목 | 요청 필드 |
+| --- | --- |
+| 추락 위험 구역 | `fallHazard` |
+| 바닥·개구부·안전난간 | `floorAndGuardrail` |
+| 안전모·턱끈·안전대 | `protectiveEquipment` |
+
+**요청 예시** · 항목마다 확인(`confirmed`) / 개선 필요(`needs_attention`) / 모름(`unknown`) 중 하나
+
+```json
+{
+  "fallHazard": "confirmed",
+  "floorAndGuardrail": "needs_attention",
+  "protectiveEquipment": "unknown"
+}
+```
+
+**응답** · `200`. `attendance.safetyCheck`에 세 답변, `updatedAt`, `result`.
+
+- 모두 확인이면 `all_confirmed`. 개선 필요나 모름이 하나라도 있으면 `needs_attention`.
+- 새로 ‘모름’으로 저장한 항목 → 반장에게 확인 요청
+
+**출근 전 위치 확인** · `POST /sites/{siteId}/check-location`
+
+- **요청** 출근과 같은 `location` 객체. GPS가 없으면 `{}`
+- **처리** 위치만 확인. 출근 저장은 별도 요청
+
+- **응답** `locationStatus` · `inside`(현장 안) / `outside`(현장 밖) / `unverified`(위치 미확인)
+- **판정 기준** 현장 반경 300m와 측정 오차
+- **저장 범위** 출근 기록에 위치 판정만 저장. 원본 좌표 제외
+
+**퇴근 저장** · `PUT /attendances/{id}/checkout`
+
+- **요청** 내 출근 ID와 `{}`.
+- **응답** `attendance.checkedOutAt`이 퇴근 시각.
+
+**내 출퇴근 이력** · `GET /attendances/records`
+
+- **요청** 조회 기간의 시작일과 종료일. 예시 `?from=2026-11-01&to=2026-11-30`.
+- **응답** `attendances[]`.
+
+## 동료·작업 상태
+
+**내 근무 상태 조회** · `GET /attendances/{id}/context`
+
+**경로의 `{id}`** · 내 출근 ID
+
+| 응답 필드 | 의미 |
+| --- | --- |
+| `buddy` | 배정된 동료. `userId`는 사용자 ID, `attendanceId`는 동료 점검에 쓸 출근 ID, `zone`은 근무 구역(미확인 시 `null`) |
+| `device` | 내 기기 휴대 상태 |
+| `peerChecks[]` | `checkerUserId`가 `attendanceId`의 작업자를 확인한 기록. 결과는 `outcome`, 사진은 `photoId`, 시각은 `checkedAt` |
+| `prompts[]` | 응답할 안전 확인 알림. `id`, `kind`, `state`, 시작 `dueAt`, 만료 `expiresAt` |
+
+**동료 점검 기록** · `PUT /attendances/{id}/peer-check`
+
+- **경로의 `{id}`** · **동료의 출근 ID**(`buddy.attendanceId`)
+- **확인 담당** · 짝이 있으면 서로 확인 / 짝이 없으면 반장이 작업자 확인
+
+| 결과 | 요청 본문 |
+| --- | --- |
+| 확인 | `{"outcome":"checked"}`. 촬영한 보호구 사진이 있으면 `photoId` 추가 |
+| 불일치 | `{"outcome":"mismatch"}`. 사진 없이 전송. 조치 후 `checked`로 다시 저장 |
+
+**응답** `check`에 저장된 점검 기록.
+
+**동료 재배정** · `PUT /sites/{siteId}/buddy-assignment`
+
+- **요청** 현장 반장이 작업자의 **사용자 ID**를 `workerId`, 동료의 **사용자 ID**를 `buddyId`로 전송
+- **응답** 배정된 `workerId`와 `buddyId`.
+
+**기기 휴대 상태 기록** · `PUT /attendances/{id}/device-status`
+
+- **요청** `state`는 `carried`(휴대) 또는 `not_carried`(미휴대). `observedAt`은 측정 시각.
+- **응답** `device.state`와 `device.lastSeenAt`. 5분간 새 신호가 없으면 `unverified`.
+
+**고위험 작업 시작·종료** · `PUT /attendances/{id}/high-risk`
+
+- **시작** `task` · `scaffold`(비계) / `ladder`(사다리) / `opening`(개구부) / `aerial_lift`(고소작업대)
+- **종료** `{"task":null}`
+- **응답** `highRiskTask`와 `highRiskStartedAt`.
+
+**안전 확인 응답** · `PUT /attendances/{id}/check-ins/{promptId}`
+
+- **요청** 내 `prompts[]` 중 `state=pending`인 알림에 `{"response":"okay"}` 또는 `{"response":"help_needed"}`.
+- **응답** `prompt`. 도움 요청 후 진행 중 사건 조회
+- **15분 미응답** · `unverified`로 처리. 긴급 호출 없음
+- **알림 종류** `break_return`(휴식 복귀), `shift_change`(교대), `high_risk_start`·`high_risk_end`(고위험 작업 시작·종료).
+
+## 긴급 호출·119
+
+**사건 생성** · `POST /incidents`
+
+필수 항목은 현장 `siteId`, 요청 `requestId`, 호출 사유 `source`. 근무 중 충격을 감지하면 `abnormal_movement`, 현장 구성원이 직접 도움을 요청하면 `manual_help`.
+
+```json
+{
+  "siteId": "22222222-2222-4222-8222-222222222222",
+  "requestId": "55555555-5555-4555-8555-555555555555",
+  "source": "abnormal_movement"
+}
+```
+
+| 선택 필드 | 보낼 값 |
+| --- | --- |
+| `location` | 사건 당시 `latitude`, `longitude`, `accuracyMeters`. 출근용 `capturedAt`은 제외 |
+| `peakG` | 최대 가속도(g) |
+| `sensorWindow` | 충격 전후 15초의 `offsetMs`·`accelerationG` 표본, 최대 300개 |
+
+- **새 사건** · `201`과 `incident`
+- **같은 사용자의 같은 현장에 진행 중 사건 있음** · 새 `requestId`여도 `200`과 기존 사건
+- **다른 현장에 진행 중 사건 있음** · `409 INCIDENT_STATE_CONFLICT`
+
+**목록** · `GET /incidents/active`
+
+- **선택 쿼리** · `siteId`
+- **응답** `incidents[]` · 본인이 당사자이거나 초대받은 사건, 반장이 담당하는 현장의 사건
+- **조회 조건** · 미출근 상태에서도 가능
+
+**상세** · `GET /incidents/{id}`
+
+- **응답** `incident` · 당사자 `worker`, 구역 `zone`, 수락자 `responderId`, 수신자 `recipients[]`
+- **위치** 생성 시 기록한 `location`. 미제공·권한 밖·사건 종료 후에는 `null`
+
+| `incident.status` | 의미 |
+| --- | --- |
+| `awaiting_worker` | `workerDueAt`까지 15초간 당사자 응답 대기. 직접 도움 요청은 이 단계를 건너뜀 |
+| `calling` | 근무 중인 지정 동료와 반장 호출. 30초 무응답 시 같은 구역 동료 한 명씩 확대(고위험 작업·다른 사건 대응 중인 대체 동료 제외) |
+| `unanswered` | 수락자가 없고 추가로 호출할 동료가 없음. 기존 초대는 수락 가능 |
+| `responding` · `arrived` | 수락자가 이동 중 · 현장 도착 |
+| `closed` | 사건 종료. `resolution`과 `closedAt`에 종료 사유와 시각 |
+
+**당사자 응답** · `PUT /incidents/{id}/worker-response`
+
+**요청** `requestId`와 `response`
+
+| `response` | 처리 |
+| --- | --- |
+| `help_needed` | 도움 요청 |
+| `okay` | 본인 확인 15초 안이면 오탐 종료. 동료 호출을 시작한 뒤에는 응답만 기록하고 현장 확인 계속 |
+
+**초대받은 동료·반장** · 사건 변경 응답은 모두 `incident`.
+
+- 수신·열람 · `PUT /incidents/{id}/receipt`. 기기가 받으면 `{"stage":"received"}`, 사용자가 열면 `{"stage":"opened"}` 전송.
+- 수락 · `PUT /incidents/{id}/accept`에 `{}`. 수락자 1명만 허용. `409`면 사건 상세 재조회.
+- 거절 · `PUT /incidents/{id}/decline`에 `{}`.
+
+| `recipients[]` 필드 | 시각의 의미 |
+| --- | --- |
+| `requestedAt` | 서버 호출 요청 |
+| `sentAt` | FCM 접수 |
+| `receivedAt` | 단말 수신 확인 |
+| `openedAt` | 사용자 열람 확인 |
+| `acceptedAt` / `declinedAt` | 수락 / 거절 |
+
+`null` · 해당 시각의 기록 없음
+
+**수락자의 현장 대응**
+
+1. **도착** · `PUT /incidents/{id}/arrival`에 `{}`. `arrivedAt` 기록.
+2. **관찰** · `PUT /incidents/{id}/observation`에 `condition` 전송. 값은 `unconscious`, `immobile`, `conscious`, `appears_safe`. `observation`과 `observedAt`에 기록되며 반장에게 보내는 상태 알림은 `notices[]`에서 확인.
+3. **완료** · `PUT /incidents/{id}/resolution`에 `reason` 필수. 도움 불필요 `no_help_needed`, 현장 조치 완료 `onsite_action_completed`, 인계 확인 `handoff_confirmed` 중 하나. 현장 사진 `photoId`는 선택. 도착 전 업로드한 사진은 `409 PHOTO_BEFORE_ARRIVAL`.
+
+**현장 확인 지연** · 수락 후 120초 동안 상태 관찰 기록이 없으면 반장에게 한 번 알림. 수락자는 계속 대응 가능.
+
+**재호출** · `PUT /incidents/{id}/retry`
+
+`unanswered`일 때 당사자나 현장 반장이 `{}` 전송.
+
+**119 전화 기록**
+
+- **앱** · 오프라인에서도 `ACTION_DIAL`로 `tel:119` 먼저 열기
+- **서버 기록** · 전화 화면을 연 시각
+- 진행 중 사건 안에서 · `PUT /incidents/{id}/dial-intent`에 `requestId` → `incident`.
+- 사건 밖에서 · `POST /sites/{siteId}/dial-intents`에 `requestId` → `200`, `id`와 `openedAt`.
+
+## 위험 신고
+
+**신고 등록** · `POST /sites/{siteId}/risks`
+
+- **권한** · 현장 구성원
+- **필수** · `requestId`, `category`, `zone`(1~100자), `anonymous`
+- **선택** · `title`(1~100자), `note`(최대 1,000자), `beforePhotoId`
+- **제목 생략** · 종류와 위치로 자동 생성
+- **신고 사진** · `beforePhotoId`에 본인이 같은 현장에 올린 `risk_before` 사진 ID
+
+```json
+{
+  "requestId": "77777777-7777-4777-8777-777777777777",
+  "category": "fall",
+  "zone": "2층 동측 개구부",
+  "anonymous": true
+}
+```
+
+- **분류** `fall`(추락), `trip`(걸려 넘어짐), `collision`(충돌), `electric`(전기), `other`(기타).
+- **응답** 신규 신고는 `201`과 `risk.status=open`. 같은 `requestId`와 같은 본문을 다시 보내면 `200`과 기존 `risk`. 본문이 달라지면 `409`.
+
+**목록** · `GET /sites/{siteId}/risks`
+
+- **선택 쿼리** · `status`, `limit`(기본 40, 최대 100), `offset`
+- **응답** `risks[]`, 현장 전체 상태별 `counts`, 다음 페이지의 `nextOffset`
+- **다음 페이지** · `nextOffset`을 `offset`으로 전송. `null`이면 마지막 페이지
+
+**상세** · `GET /sites/{siteId}/risks/{id}`
+
+| `risk` 필드 | 의미 |
+| --- | --- |
+| `beforePhotoId` / `afterPhotoId` | 조치 전 / 후 사진 |
+| `createdAt` / `fixedAt` / `verifiedAt` | 신고 / 조치 / 재확인 시각 |
+| `assigneeId` / `assigneeName` | 배정된 담당자 ID / 이름 |
+| `fixerId` / `fixerName` | 실제 조치자 ID / 이름 |
+| `verifierId` / `verifierName` | 재확인자 ID / 이름 |
+| `canRecheck` | 현재 사용자가 재확인할 수 있으면 `true` |
+
+- **담당자 미정** · 해당 ID·이름은 `null`
+- **신고자 이름** · 목록의 `reporterName`은 항상 `null`. 익명 신고는 상세에서도 반장에게 이름 비공개
+
+**조치와 재확인** · 아래 요청의 응답은 갱신된 `risk`.
+
+1. **배정** · `PUT /sites/{siteId}/risks/{id}/request`. 반장이 `assigneeId`에 현장 구성원의 사용자 ID 전송. 상태는 `open`(미조치).
+2. **조치** · `PUT /sites/{siteId}/risks/{id}/fix`. 현장 구성원이 **본인이 같은 현장에 `risk_after`로 올린 사진**의 ID를 `afterPhotoId`로 전송. 상태는 `awaiting_recheck`(재확인 대기).
+3. **재확인** · `PUT /sites/{siteId}/risks/{id}/recheck`. 다른 현장 구성원이 `{}`를 보내면 `resolved`(완료). 신고자나 실제 조치자가 재확인하면 `403`.
+
+## 현장 운영
+
+**권한** · 해당 현장 반장
+
+**대시보드** · `GET /sites/{siteId}/dashboard`
+
+- **응답** `site`, 기준일 `workDate`, 진행 중인 `activeCalls`, 오래된 미조치 위험 5건(`oldestRisks`), 오늘 최신 기록 10건(`timeline`).
+- 진행 중 호출은 주기적으로 다시 조회.
+
+| 응답의 `counts` 필드 | 뜻 |
+| --- | --- |
+| `members` / `attended` | 현장 작업자 수 / 오늘 출근 인원 |
+| `crossChecked` | 오늘 교차 확인을 완료한 인원. 사진 없는 확인 포함 |
+| `photoConfirmed` | 오늘 사진으로 교차 확인을 완료한 인원. ‘서로 찍기 완료’에 사용 |
+| `unverified` | 상태 미확인 인원 |
+| `openRisks` / `pendingSafetyReviews` | 미조치 위험 건수 / 반장 확인 대기 건수 |
+
+- **완료 인원** · 당일 원본 확인 기록 기준. 퇴근·짝 변경 후에도 유지
+- **현재 동료와의 확인 상태** · 아래 `peerStatus`로 확인
+
+**작업자 목록** · `GET /sites/{siteId}/workers`
+
+- **응답** `workers[]`. 호출 중인 작업자는 `userId`와 대시보드의 `activeCalls[].workerId`로 연결.
+
+| 작업자 필드 | 뜻 |
+| --- | --- |
+| `userId` / `buddyUserId` | 작업자 ID / 배정된 동료 ID |
+| `name`, `occupation`, `zone` | 이름, 직종, 작업 구역 |
+| `attendanceId`, `checkedInAt`, `checkedOutAt` | 오늘의 출근 ID, 출근 시각, 퇴근 시각 |
+| `locationStatus`, `device`, `checkInStatus` | 출근 위치 판정, 기기 상태, 최근 안전 확인 상태 |
+| `peerStatus` | `pending` 대기 · `mismatch` 불일치 · `statement_only` 진술 확인 · `photo_confirmed` 사진 확인 |
+
+**점검 확인 요청 목록** · `GET /sites/{siteId}/safety-requests`
+
+- **응답** `requests[]`에 `attendanceId`, 세 점검 답변, `requestedAt`(요청 시각), `acknowledgedAt`(확인 시각).
+
+**점검 요청 확인** · `PUT /sites/{siteId}/safety-requests/{id}/acknowledgement`
+
+- **요청** `{id}`는 목록의 `attendanceId`. 본문 `{}`.
+- **응답** `request.acknowledgedAt`에 확인 시각 기록. 작업자의 원래 답변은 유지.
+
+## 푸시·알림
+
+**기기 등록** · `PUT /push-devices/{deviceId}`
+
+- **경로** · `deviceId`는 앱 설치 시 만든 UUID
+- **요청** 로그인 또는 FCM 토큰 변경 시 `fcmToken`에 기기가 받은 새 토큰 전송
+- **응답** `device.id`.
+
+**기기 해제** · `DELETE /push-devices/{deviceId}`
+
+- 로그아웃 전 현재 토큰으로 호출. **응답** `{"removed":true}`.
+
+**내 알림 설정 조회** · `GET /me/notification-preferences`
+
+- **응답** 긴급 알림 `emergencyPush`와 현장 알림 `sitePush`. 기본값은 둘 다 `true`.
+
+**내 알림 설정 변경** · `PUT /me/notification-preferences`
+
+- **요청** 두 설정 중 바꿀 값만 전송. 예시 `{"sitePush":false}`.
+- **응답** 변경 후 `emergencyPush`와 `sitePush`.
+
+**현장 알림함** · `GET /sites/{siteId}/notices`
+
+- **응답** `notices[]`에 내 최근 알림 최대 100건. 항목은 `id`, 종류 `kind`, 관련 기록 `entityId`, 알림 시각 `availableAt`, 전송 상태 `pushStatus`.
+
+**FCM 수신 시 처리**
+
+- **긴급 푸시** · 데이터(`type`, `eventId`, `siteId`, `incidentId`)만 수신
+- **현장 푸시** · 표시용 알림 + 데이터(`type`, `eventId`, `siteId`, `entityId`) 수신
+
+| 메시지 `type` | 앱 동작 |
+| --- | --- |
+| `incident_alert` | 잠금 화면 알림 표시. 단말 수신·사용자 열람은 각각 서버에 기록. 같은 `eventId`는 기존 알림 갱신 |
+| `incident_observation`, `incident_worker_safe`, `incident_closed`, `incident_verification_overdue` | `incidentId`로 사건 상세 갱신 |
+| `work_prompt` / `high_risk` | 내 근무 상태 / 동료 작업 상태 갱신 |
+| `safety_review` / `risk_action` | 반장 점검 요청 목록 / 위험 신고 상세 갱신 |
+
+## 사진
+
+**사진 업로드** · `POST /sites/{siteId}/photos`
+
+| 요청 필드 | `multipart/form-data`에 보낼 값 |
+| --- | --- |
+| `file` | JPG·PNG·WebP 정지 사진 1장. 최대 5 MiB, 3,200만 화소 |
+| `purpose` | `ppe` 동료 보호구 · `risk_before` 위험 조치 전 · `risk_after` 위험 조치 후 · `incident_scene` 사고 현장 |
+
+- **응답** `201` · `photo.id`, `photo.purpose`
+- **첨부 조건** 같은 현장에서 본인이 해당 용도로 올린 `photo.id` 사용
+
+**사진 열람** · `GET /sites/{siteId}/photos/{id}`
+
+- **응답** 인증 헤더로 요청하면 `200 image/jpeg` 바이트.
+- **권한** 미첨부 사진은 업로더만, 위험 사진은 현장 구성원, 동료·사고 사진은 해당 당사자와 반장.
+
+**미첨부 사진 삭제** · `DELETE /sites/{siteId}/photos/{id}`
+
+- 본인이 올린 미첨부 사진만 삭제 가능. **응답** `204`, 본문 없음.
+
+## 타임라인·정정
+
+**기록 조회** · `GET /sites/{siteId}/timeline`
+
+- **요청** `?scope=self&day=2026-11-02`. 반장은 `scope=site`로 현장 전체를 조회. `limit` 기본 50건, 최대 100건.
+- **응답** 최신순 `events[]`. 다음 페이지는 `nextBefore`를 `before`로 전송. `null`이면 마지막 페이지.
+
+| 기록 필드 | 뜻 |
+| --- | --- |
+| `type` / `source` | 이벤트 종류 / 출처. `human`은 사람이 확인한 기록, `system`은 시스템 기록 |
+| `recordedAt` | 서버가 기록한 시각 |
+| `entityId` | 관련 출근·사건·위험 신고 ID |
+| `details.photoId` | 동료 점검에 첨부한 사진 ID |
+| `incident.worker_unanswered` / `incident.response_delayed` | 본인 확인 시간 만료 / 대응자 수락 시간 만료 |
+| `incident.accepted` | `details.role`은 수락자 역할, `details.responseSeconds`는 해당 수락자 호출부터 수락까지 걸린 초 |
+| `incident.verification_overdue` | 수락 후 120초간 현장 상태 미확인으로 반장에게 확인 요청 |
+
+**원본 검사** · `GET /sites/{siteId}/timeline/verify`
+
+- 반장 전용. **응답** `valid`(검사 결과), `checked`(검사 건수), `firstInvalidSeq`(첫 오류 순번).
+
+**정정 요청** · `POST /sites/{siteId}/timeline/{eventId}/corrections`
+
+- **요청** `{eventId}`에 본인 기록의 원본 이벤트 ID. 본문에 `requestId`와 `note`(1~1,000자).
+- **응답** `201`, `correction`.
+
+**정정 목록** · `GET /sites/{siteId}/corrections`
+
+- **응답** `corrections[]`. 작업자는 본인 요청, 반장은 현장 전체 요청. 익명 신고의 원 신고자 ID는 반장에게도 비공개.
+
+**정정 검토** · `PUT /sites/{siteId}/corrections/{id}/review`
+
+- **요청** 반장이 `status`(`accepted` 승인 / `declined` 반려)와 `note`(1~1,000자) 전송.
+- **응답** `correction`. 검토 결과를 새 이벤트로 추가. 원본 연결은 `correctsId`.
+
+## 공통 오류
 
 ```json
 {
@@ -28,273 +540,15 @@ Authorization: Bearer example-access-token
 }
 ```
 
-| 상태 · 코드 | 적용 조건 | 앱 처리 |
-| --- | --- | --- |
-| `400 VALIDATION_ERROR` | 입력 누락·형식·타입·값·추가 필드 오류 | 입력 확인 |
-| `401 UNAUTHORIZED` | 로그인 필요 API의 토큰 없음·만료·유효하지 않음 | 다시 로그인 |
-| `413 VALIDATION_ERROR` | JSON 본문 100KiB 초과 | 요청 크기 확인 |
-| `429 RATE_LIMITED` | 회원가입·로그인 각각 IP당 1분 60회 초과 | `Retry-After` 헤더의 초만큼 기다린 뒤 재시도 |
-| `5xx`·JSON이 아닌 응답·알 수 없는 코드 | 서버·통신 오류 | 저장 성공이나 로그인 실패로 단정하지 않기 |
-
-각 API의 **오류**에는 위 공통 오류 외에 필요한 항목만 표시.
-응답 없음·시간 초과는 성공 여부 미확인 상태. 완료 표시는 서버 성공 응답 후에만 변경.
-
-## 상태 확인 · `GET /health`
-
-**요청** — 인증·본문 없음. 요청마다 서버의 DB 연결을 확인하며 결과를 캐시하지 않음.
-
-| HTTP 상태 | 응답 |
+| 상태 · 코드 | 처리 |
 | --- | --- |
-| `200` — DB 연결 정상 | `{"status":"ok","database":"up"}` |
-| `503` — 실행 중 DB 연결 실패 | `{"status":"error","database":"down"}` |
-
-DB 연결 복구 후에는 서버 재시작 없이 다시 `200`. 서버 시작 전부터 DB 연결이 안 되면 서버도 시작되지 않아 응답 없음.
-`200`은 DB 연결 확인 결과이며, 모든 API·테이블이 정상이라는 뜻은 아님.
-
-## 인증
-
-회원가입 → 로그인 → 응답의 토큰을 안전하게 보관.
-
-### 회원가입 · `POST /auth/signup`
-
-**요청** — 인증 불필요. 세 필드 모두 필수.
-
-| 필드 | 타입 | 입력 기준 |
-| --- | --- | --- |
-| `name` | string | 앞뒤 공백 제거 후 빈 값 불가 |
-| `email` | string | 이메일 형식. 앞뒤 공백 제거·소문자 처리, 대소문자 구분 없이 중복 검사 |
-| `password` | string | 12~20자. 문자 조합 강제 없음. 공백·대소문자 변경 없이 전달 |
-
-```json
-{
-  "name": "홍길동",
-  "email": "worker@example.com",
-  "password": "samplePassword123"
-}
-```
-
-**성공 응답** — `201`. `user`의 `id`·`name`·`email`은 문자열이며 이름·이메일은 위 기준으로 정리된 값.
-
-```json
-{
-  "user": {
-    "id": "user_123",
-    "name": "홍길동",
-    "email": "worker@example.com"
-  }
-}
-```
-
-**오류** — `409 EMAIL_ALREADY_EXISTS`: 이미 가입된 이메일. 로그인 안내.
-
-**주의사항**
-
-- 가입 성공은 로그인 완료가 아님. 로그인 토큰은 로그인 API에서 발급.
-- 비밀번호 확인은 앱에서 검사하고 서버에는 `password` 하나만 전송.
-- 응답이 없으면 가입 여부가 미확인 상태이므로 무조건 반복 가입 요청하지 않기.
-
-### 로그인 · `POST /auth/login`
-
-**요청** — 인증 불필요. 두 필드 모두 필수.
-
-| 필드 | 타입 | 입력 기준 |
-| --- | --- | --- |
-| `email` | string | 이메일 형식·앞뒤 공백 제거·소문자 처리 |
-| `password` | string | 빈 값 불가. 입력값 그대로 전달 |
-
-```json
-{
-  "email": "worker@example.com",
-  "password": "samplePassword123"
-}
-```
-
-**성공 응답** — `200`.
-
-```json
-{
-  "accessToken": "example-access-token",
-  "tokenType": "Bearer",
-  "expiresAt": "2026-11-06T03:00:00Z",
-  "user": {
-    "id": "user_123",
-    "name": "홍길동",
-    "email": "worker@example.com"
-  }
-}
-```
-
-| 필드 | 타입 | 의미 |
-| --- | --- | --- |
-| `accessToken` | string | 로그인한 사용자임을 증명하는 토큰 |
-| `tokenType` | string | `Bearer` 고정 |
-| `expiresAt` | string | 토큰 만료 시각 |
-| `user` | object | 회원가입 응답과 같은 사용자 정보 |
-
-**오류** — `401 INVALID_CREDENTIALS`: 없는 이메일·틀린 비밀번호 모두 같은 응답. 재입력 안내.
-
-**주의사항**
-
-- 로그인 성공부터 **7일 고정**. 앱 사용으로 연장하지 않으며 서버가 만료 여부 판단.
-- 토큰은 안전하게 보관하고 로그인 유지를 위해 비밀번호를 저장하지 않기.
-
-## 출근·점검
-
-로그인·앱 재실행 → 오늘 상태 조회 → 미출근이면 출근 저장 → 점검 저장.
-출근 날짜는 **한국 시간(Asia/Seoul) 00:00~24:00**, 사용자별 하루 한 건.
-
-### 출근 저장 · `POST /attendances`
-
-**요청** — 빈 JSON 객체 `{}`. 사용자 ID·날짜·시각은 서버가 결정.
-
-**성공 응답** — 첫 출근 `201`, 이미 출근했다면 `200`으로 기존 기록 반환.
-
-```json
-{
-  "attendance": {
-    "id": "attendance_123",
-    "workDate": "2026-10-30",
-    "checkedInAt": "2026-10-30T00:00:00Z",
-    "safetyCheck": null
-  }
-}
-```
-
-**오류** — 공통 오류 적용. 빈 객체가 아닌 본문은 `400`.
-
-**주의사항**
-
-- 점검 전에도 출근 가능. 중복 클릭·재전송은 ID·최초 출근 시각·저장된 점검을 바꾸지 않음.
-- 응답이 없으면 오늘 상태 조회로 저장 여부 확인.
-
-### 오늘 출근·점검 조회 · `GET /attendances/today`
-
-**요청** — 본문·조회 조건 없음.
-
-**성공 응답** — `200`. 미출근이면 아래 응답.
-
-```json
-{
-  "attendance": null
-}
-```
-
-<details>
-<summary>출근·점검이 저장된 응답 예시</summary>
-
-```json
-{
-  "attendance": {
-    "id": "attendance_123",
-    "workDate": "2026-10-30",
-    "checkedInAt": "2026-10-30T00:00:00Z",
-    "safetyCheck": {
-      "fallHazard": "confirmed",
-      "floorAndGuardrail": "needs_attention",
-      "protectiveEquipment": "unknown",
-      "result": "needs_attention",
-      "updatedAt": "2026-10-30T00:05:00Z"
-    }
-  }
-}
-```
-
-</details>
-
-| 상태 | 앱 표시 |
-| --- | --- |
-| `attendance: null` | 미출근 |
-| 기록은 있고 `safetyCheck: null` | 출근 완료 · 점검 미작성 |
-| `safetyCheck.result: all_confirmed` | 전 항목 확인 |
-| `safetyCheck.result: needs_attention` | 확인 필요 |
-
-**오류** — 공통 오류 적용. 미출근은 `404`가 아님.
-
-**주의사항** — 로그인한 본인의 오늘 기록만 반환.
-
-### 안전점검 저장·수정 · `PUT /attendances/{id}/safety-check`
-
-**요청** — `{id}`는 출근 응답의 `attendance.id`. 세 필드 모두 필수 문자열.
-
-| 필드 | 앱 점검 항목 |
-| --- | --- |
-| `fallHazard` | 작업 구역 추락·개구부 위험 위치 확인 |
-| `floorAndGuardrail` | 바닥 자재 정리 및 안전난간 상태 확인 |
-| `protectiveEquipment` | 본인 안전모·턱끈 및 보호구 착용 완료 |
-
-답변: `confirmed` = 확인, `needs_attention` = 개선 필요, `unknown` = 모름.
-
-```json
-{
-  "fallHazard": "confirmed",
-  "floorAndGuardrail": "needs_attention",
-  "protectiveEquipment": "unknown"
-}
-```
-
-**성공 응답** — 최초 저장·수정 모두 `200`.
-
-```json
-{
-  "attendance": {
-    "id": "attendance_123",
-    "workDate": "2026-10-30",
-    "checkedInAt": "2026-10-30T00:00:00Z",
-    "safetyCheck": {
-      "fallHazard": "confirmed",
-      "floorAndGuardrail": "needs_attention",
-      "protectiveEquipment": "unknown",
-      "result": "needs_attention",
-      "updatedAt": "2026-10-30T00:05:00Z"
-    }
-  }
-}
-```
-
-**오류**
-
-| 상태 · 코드 | 의미·앱 처리 |
-| --- | --- |
-| `404 ATTENDANCE_NOT_FOUND` | 없거나 다른 사용자의 기록. 오늘 상태 재조회 |
-| `409 ATTENDANCE_NOT_TODAY` | 지난 날짜 기록은 수정 불가. 오늘 상태 재조회 |
-
-**주의사항**
-
-- 본인의 **오늘 기록만** 수정. `unknown`도 답변으로 인정하며 누락·`null`·잘못된 값은 `400`.
-- 수정할 때도 세 답변 전체 전송. 출근 시각은 유지하고, 같은 답변 재전송은 수정 시각도 유지.
-- 세 답변 모두 `confirmed`이면 `all_confirmed`, 하나라도 다르면 `needs_attention`. 저장 성공과 전 항목 확인은 구분.
-- 응답이 없으면 오늘 상태 조회로 저장 여부 확인.
-
-### 출근·점검 응답 필드
-
-| 필드 | 타입 | 의미 |
-| --- | --- | --- |
-| `attendance` | object 또는 null | 출근 기록. 오늘 조회에서 미출근이면 `null` |
-| `attendance.id` | string | 출근 기록 ID |
-| `attendance.workDate` | string | 한국 기준 날짜, `YYYY-MM-DD` |
-| `attendance.checkedInAt` | string | 최초 출근 시각 |
-| `attendance.safetyCheck` | object 또는 null | 점검 결과. 미작성은 `null` |
-| `safetyCheck.fallHazard`·`floorAndGuardrail`·`protectiveEquipment` | string | 저장한 세 답변 |
-| `safetyCheck.result` | string | `all_confirmed` 또는 `needs_attention` |
-| `safetyCheck.updatedAt` | string | 점검 최초 저장·마지막 수정 시각 |
-
-`safetyCheck.*`는 `attendance.safetyCheck` 내부 필드.
-
-## 현장 코드 확인·참여
-
-| 순서 | 요청 | 앱에서 사용할 값 |
-| --- | --- | --- |
-| 1. 코드 확인 | `POST /sites/lookup` | 현장 이름·반장 이름을 보여주고 참여 여부 확인 |
-| 2. 참여 | `POST /sites/{siteId}/join` | 조회한 현장 ID와 같은 코드 사용. 최초 참여 `201`, 재요청 `200` |
-
-두 요청 모두 로그인 토큰 필요. 요청 본문 예시 `{"code":"SL-2026"}`. 영문·숫자와 구분용 하이픈 포함 최대 12자, 영문 대소문자 무관.
-
-성공 응답 예시
-
-```json
-{"site":{"id":"b6bf1ca7-9caf-4549-b2c7-8eed28491149","name":"북쪽 현장","foremanName":"김민수"}}
-```
-
-- `400 VALIDATION_ERROR` 코드 형식 확인
-- `401 UNAUTHORIZED` 재로그인
-- `404 SITE_NOT_FOUND` 코드 또는 현장 불일치. 코드 다시 입력
+| `400` / `413` | 입력값·필수 필드 / 본문·파일 크기 확인 |
+| `401 INVALID_CREDENTIALS` | 로그인 이메일·비밀번호 확인 |
+| `401 UNAUTHORIZED` | 다시 로그인 |
+| `403` / `404` | 현장·역할·기록 ID 확인. 볼 권한이 없는 사건이나 사진도 `404` 가능 |
+| `409 SHIFT_REQUIRED` | 해당 현장에 출근했는지 확인 |
+| `409 SHIFT_ENDED` / `ATTENDANCE_NOT_TODAY` | 오늘 근무 중인 출근 기록인지 확인 |
+| `409 INCIDENT_STATE_CONFLICT` / `CHECK_IN_NOT_PENDING` | 사건 상세 / 현재 안전 확인 상태 재조회 |
+| `409 REQUEST_ID_CONFLICT` | 같은 `requestId`로 보낸 이전 요청 본문과 대조 |
+| `429` | `Retry-After`가 있으면 해당 초만큼 기다린 후 재시도 |
+| 시간 초과 / `5xx` | 저장 여부 미확인. 출근은 오늘 기록, 호출은 진행 중 사건을 먼저 조회 |

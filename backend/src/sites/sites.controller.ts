@@ -2,11 +2,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Header,
   HttpCode,
   NotFoundException,
   Param,
   Post,
+  Put,
   Req,
   Res,
   UseGuards,
@@ -16,6 +18,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard.js';
 import { SitesService } from './sites.service.js';
+import { inputFor, profileSchema, setupSchema } from './sites.schemas.js';
 
 const codeInput = z.strictObject({
   code: z
@@ -37,6 +40,46 @@ function readCode(body: unknown): string {
 @UseGuards(AuthGuard, ThrottlerGuard)
 export class SitesController {
   constructor(private readonly sites: SitesService) {}
+
+  @Post()
+  @Header('Cache-Control', 'no-store')
+  create(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.sites.create(request.user.id, inputFor(setupSchema, body));
+  }
+
+  @Get('mine')
+  @Header('Cache-Control', 'no-store')
+  mine(@Req() request: AuthenticatedRequest) {
+    return this.sites.mine(request.user.id);
+  }
+
+  @Put(':siteId/settings')
+  @Header('Cache-Control', 'no-store')
+  settings(
+    @Param('siteId') siteId: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.sites.configure(
+      request.user.id,
+      inputFor(siteIdSchema, siteId),
+      inputFor(setupSchema, body),
+    );
+  }
+
+  @Put(':siteId/profile')
+  @Header('Cache-Control', 'no-store')
+  profile(
+    @Param('siteId') siteId: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.sites.setProfile(
+      inputFor(siteIdSchema, siteId),
+      request.user.id,
+      inputFor(profileSchema, body),
+    );
+  }
 
   @Post('lookup')
   @HttpCode(200)
