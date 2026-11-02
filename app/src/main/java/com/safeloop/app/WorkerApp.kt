@@ -264,9 +264,9 @@ private fun sheetTitle(route:String)=when{
 }
 
 // 3-1 본인 확인 15초. 탭을 숨기고 괜찮아요와 119만 크게 보여준다.
-@Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now)
+@Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now);val bars=WindowInsets.safeDrawing.asPaddingValues()
  Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false,usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
-  Surface(Modifier.fillMaxSize(),color=Color.White){Column(Modifier.fillMaxSize().safeDrawingPadding()){
+  Surface(Modifier.fillMaxSize(),color=Color.White){Column(Modifier.fillMaxSize().padding(bars)){
    TapeStrip()
    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start=20.dp,end=20.dp,top=20.dp,bottom=16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){SLPill("시스템이 추정",amber=true,estimate=true);if(preview)SLPill("체험 모드",amber=true)}

@@ -288,7 +288,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  }
  fun cancelSiteConfirmation(){pendingSite=null}
  // 서버에 닿지 않으면 입력한 이름으로 체험 모드를 시작한다. 실제 가입으로 표시하지 않는다.
- fun continueOffline(name:String)=action {serverDown=false;enterPreview();if(name.isNotBlank())update(state.copy(name=name.trim()));onboarding="profile"}
+ fun continueOffline(name:String)=action {serverDown=false;feedback=null;enterPreview();if(name.isNotBlank())update(state.copy(name=name.trim()));onboarding="profile"}
  fun usePreview()=action {enterPreview()}
  private suspend fun enterPreview() {
   generation++;polling?.cancel();app.stopService(Intent(app,SafetyService::class.java))

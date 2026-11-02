@@ -60,16 +60,16 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
                     var email by rememberSaveable { mutableStateOf("") }
                     var password by remember { mutableStateOf("") }
                     PageHeading(if (signup) "가입 1 / 4" else "로그인", if (signup) "계정을 만들어요" else "다시 만나서 반가워요", "내 근로 기록의 주인은 나예요. 기록은 이 계정에 남아요.")
+                    if (controller.serverDown) {
+                        SmallNote("지금은 서버에 연결할 수 없어요. 체험 모드로 이어서 볼 수 있어요. 기록은 이 폰에만 저장돼요.", amber = true)
+                        SLButton("체험 모드로 계속", { controller.continueOffline(name) }, enabled = !busy, secondary = true)
+                    }
                     if (signup) SLField("이름", name, { name = it })
                     SLField("이메일", email, { email = it }, "name@example.com")
                     OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true,
                         visualTransformation = PasswordVisualTransformation(), label = { Text(if (signup) "비밀번호 · 12~20자" else "비밀번호") })
                     SLButton(if (signup) "다음" else "로그인", { controller.authenticate(email, password, name, signup) },
                         enabled = !busy && email.isNotBlank() && password.isNotBlank() && (!signup || (password.length in 12..20 && name.isNotBlank())))
-                    if (controller.serverDown) {
-                        SmallNote("지금은 서버에 연결할 수 없어요. 체험 모드로 이어서 볼 수 있어요. 기록은 이 폰에만 저장돼요.", amber = true)
-                        SLButton("체험 모드로 계속", { controller.continueOffline(name) }, enabled = !busy, secondary = true)
-                    }
                     GhostButton(if (signup) "이미 계정이 있어요" else "처음 이용해요", { controller.beginOnboarding(if (signup) "login" else "signup") })
                 }
                 "sites" -> {

@@ -89,7 +89,7 @@ data class WorkerState(
   fun preview():WorkerState {
    val today=LocalDate.now(koreaZone)
    val work=(1L..7L).map{today.minusDays(it)}.filter{it.dayOfWeek.value<6}.map{d->WorkEntry("sample-$d",d.toString(),d.atTime(8,0).atZone(koreaZone).toInstant().toEpochMilli(),d.atTime(17,0).atZone(koreaZone).toInstant().toEpochMilli(),sample=true)}
-   return WorkerState(work=work,risks=listOf(WorkerRisk("sample-risk-1","2층 개구부 덮개 미설치","2층 동측","작업 동선 옆 개구부에 덮개 설치가 필요합니다.","추락"),WorkerRisk("sample-risk-2","통로 적치 자재 정리","1층 출입구","이동 통로 확보와 동료 재확인이 끝났습니다.","넘어짐","verified")))
+   return WorkerState(work=work,risks=listOf(WorkerRisk("sample-risk-1","2층 개구부 덮개 미설치","2층 동측","작업 동선 옆 개구부에 덮개 설치가 필요합니다.","추락",time=System.currentTimeMillis()-3*3600000),WorkerRisk("sample-risk-2","통로 적치 자재 정리","1층 출입구","이동 통로 확보와 동료 재확인이 끝났습니다.","넘어짐","verified")))
   }
  }
 }
