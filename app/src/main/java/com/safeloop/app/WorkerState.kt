@@ -26,12 +26,10 @@ fun todayKey(): String = LocalDate.now(koreaZone).toString()
 fun moneyText(value: Int): String = String.format(Locale.KOREA,"%,d",value)
 fun clockText(value: Long?): String = value?.let { DateTimeFormatter.ofPattern("HH:mm").withZone(koreaZone).format(Instant.ofEpochMilli(it)) } ?: "—"
 fun dateLabel(): String = LocalDate.now(koreaZone).format(DateTimeFormatter.ofPattern("M월 d일 EEEE",Locale.KOREA))
-fun highRiskLabel(task:String?)=when(task){"scaffold"->"비계 위 작업";"ladder"->"사다리 작업";"opening"->"개구부 근처 작업";"aerial_lift"->"고소작업대 작업";else->task.orEmpty()}
-fun responseLabel(response:String)=when{response=="safe"->"본인 응답 · 괜찮아요";response=="help"->"본인 응답 · 도움 요청";response=="accepted"->"동료 수락";response=="arrived"->"현장 도착";response=="declined"->"참여 어려움";response=="retry"->"다시 호출";response.startsWith("observe:")->"직접 확인한 상태 기록";response.startsWith("finish:")->"대응 마무리";else->response}
 fun parseTime(value: Any?): Long? = runCatching { Instant.parse(value?.toString()).toEpochMilli() }.getOrNull()
 
 data class WorkEntry(val id:String,val day:String,val start:Long,val end:Long?=null,val wage:Int=180000,val sample:Boolean=false,val wageKnown:Boolean=true,val site:String="",val zone:String="",val siteId:String="",val occupation:String="")
-data class WorkerEvent(val id:String,val title:String,val detail:String,val time:Long=System.currentTimeMillis(),val estimate:Boolean=false,val canCorrect:Boolean=false,val siteId:String="",val hash:String="")
+data class WorkerEvent(val id:String,val title:String,val detail:String,val time:Long=System.currentTimeMillis(),val estimate:Boolean=false,val canCorrect:Boolean=false,val siteId:String="")
 data class WorkerRisk(val id:String,val title:String,val zone:String,val note:String,val category:String="기타",val status:String="open",val photo:String?=null,val time:Long=System.currentTimeMillis(),val anonymous:Boolean=true,val beforePhotoId:String?=null,val afterPhotoId:String?=null,val afterPhoto:String?=null,val fixerName:String?=null,val verifierName:String?=null,val fixedAt:Long?=null,val verifiedAt:Long?=null,val canRecheck:Boolean=false)
 data class WorkPrompt(val id:String,val kind:String,val dueAt:Long,val state:String,val response:String?=null)
 data class PeerEvidence(val checkerId:String,val subjectAttendanceId:String,val outcome:String,val checkedAt:Long,val photoId:String?=null,val photo:String?=null)

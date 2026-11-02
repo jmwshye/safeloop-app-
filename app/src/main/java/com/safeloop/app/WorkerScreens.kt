@@ -49,7 +49,7 @@ data class WorkerActions(
  SLCard(Modifier.clickable{onSheet("site")}){
   Text("오늘의 현장",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)
   Text(s.site,fontSize=21.sp,fontWeight=FontWeight.ExtraBold,color=Ink)
-  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){if(s.preview)SLPill("현장 안 · 체험 예시") else when(s.beforeLocation){"inside"->SLPill("현장 안에 있어요");"outside"->SLPill("현장 밖이에요",amber=true);else->SLPill("위치 미확인",neutral=true)};if(s.code.isNotBlank())SLPill("현장 코드 ${s.code}",neutral=true)}
+  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){when(s.beforeLocation){"inside"->SLPill("현장 안에 있어요");"outside"->SLPill("현장 밖이에요",amber=true);else->SLPill("위치 미확인",neutral=true)};if(s.code.isNotBlank())SLPill("현장 코드 ${s.code}",neutral=true)}
  }
  FlatCard(listOf("오늘 할 일" to s.workOccupation,"작업 위치" to s.workZone,"예상 일당" to if(s.wageKnown)"${moneyText(s.wage)}원" else "미입력"))
  Text("예상 일당은 내 기록용이에요. 실제 지급액과 다를 수 있어요. 작업 전 확인은 출근한 뒤에 해도 돼요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
@@ -80,8 +80,8 @@ data class WorkerActions(
  Text("오늘의 안전 동료",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)
  Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Avatar(s.buddyName,46);Column(Modifier.weight(1f)){Text(s.buddyName,fontSize=18.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(s.buddyZone,fontSize=14.sp,color=Muted)};SLPill(peerLabel(s.peerStatus),amber=!s.peerChecked)}
 }}
-internal fun peerLabel(status:String)=when(status){"photo_confirmed"->"사진 교차 확인";"statement_only"->"사진 없는 확인";"mismatch"->"불일치";else->"촬영 전"}
-internal fun durationText(start:Long,end:Long):String{val minutes=((end-start)/60000).coerceAtLeast(0);return "${minutes/60}시간 ${minutes%60}분"}
+private fun peerLabel(status:String)=when(status){"photo_confirmed"->"사진 교차 확인";"statement_only"->"사진 없는 확인";"mismatch"->"불일치";else->"촬영 전"}
+private fun durationText(start:Long,end:Long):String{val minutes=((end-start)/60000).coerceAtLeast(0);return "${minutes/60}시간 ${minutes%60}분"}
 
 // 2-1 오늘 · 작업 중. 고위험·미휴대 상태는 맨 위 카드가 바뀐다.
 @Composable private fun TodayWorking(s:WorkerState,now:Long,onSheet:(String)->Unit,onMonitoring:(Boolean)->Unit){
@@ -89,7 +89,7 @@ internal fun durationText(start:Long,end:Long):String{val minutes=((end-start)/6
  if(s.prompts.any{it.state=="unverified"})SmallNote("응답하지 않은 확인 요청 · 안전 미확인",amber=true)
  when{
   !s.carried->SLCard(color=PaleAmber){Text("기기 미휴대",fontSize=26.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("지금은 움직임을 감지할 수 없어요.",fontSize=16.sp,color=Ink);SLButton("휴대 중이에요",{onSheet("carried")})}
-  s.monitoring&&s.highRiskTask!=null->SLCard(color=OkSoft){SLPill("감시 강화",fact=true);Text("${highRiskLabel(s.highRiskTask)}\n진행 중이에요",fontSize=26.sp,lineHeight=34.sp,fontWeight=FontWeight.ExtraBold,color=Ink);DetailRow("시작 시각",clockText(s.highRiskStartedAt));SLButton("고위험 작업 끝내기",{onSheet("high-risk")})}
+  s.monitoring&&s.highRiskTask!=null->SLCard(color=OkSoft){SLPill("감시 강화",fact=true);Text("${s.highRiskTask}\n작업 중이에요",fontSize=26.sp,lineHeight=34.sp,fontWeight=FontWeight.ExtraBold,color=Ink);DetailRow("시작 시각",clockText(s.highRiskStartedAt));SLButton("고위험 작업 끝내기",{onSheet("high-risk")})}
   s.monitoring->SLCard(color=OkSoft){SLPill("움직임 감시 켜짐",fact=true);Text("폰은 주머니에\n넣어 두세요",fontSize=28.sp,lineHeight=38.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("화면이 꺼져 있어도 움직임을 지켜봐요.",fontSize=16.sp,color=Ink)}
   else->SLCard(color=BrandSoft){Text("움직임 감시가 꺼져 있어요",fontSize=21.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("켜면 강한 충격 뒤 움직임이 줄었을 때 본인 확인을 요청해요. 사고로 단정하지 않아요.",fontSize=15.sp,lineHeight=23.sp,color=Ink);SLButton("감시 켜기",{onMonitoring(true)},icon="activity")}
  }
@@ -117,6 +117,13 @@ internal fun durationText(start:Long,end:Long):String{val minutes=((end-start)/6
  SLButton("오늘의 기록 보기",{onPage(WorkerPage.RECORDS)})
 }
 
+@Composable fun BuddyCard(s:WorkerState,onClick:()->Unit){SLCard {
+ Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Avatar(s.buddyName);Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)){Text(s.buddyName,fontSize=17.sp,fontWeight=FontWeight.Bold,color=Ink);Text(s.buddyZone,fontSize=14.sp,color=Muted)};SLPill(when(s.peerStatus){"photo_confirmed"->"사진 교차 확인";"statement_only"->"사진 없는 확인";"mismatch"->"불일치";else->"확인 대기"},amber=!s.peerChecked)}
+ DetailRow("동료 기기",s.buddyState)
+ Text("작업 전 서로의 보호구를 확인해 주세요. 긴급 요청이 오면 본인의 안전을 먼저 확보하세요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
+ SLButton(if(s.peerChecked)"동료 확인 내용 다시 기록" else "동료 보호구 확인하기",onClick,secondary=true,icon="people")
+}}
+
 fun callStatus(c:WorkerCall,uid:String)=if(c.serverStatus=="unanswered")"수락자 없음" else if(c.status=="closed")"안전 확인 완료" else if(c.status=="accepted")"현장 확인 진행 중" else if(c.stage=="self")"본인 응답 대기" else if(c.isSubject(uid))"동료 응답 대기" else "동료 확인 요청"
 @Composable fun CallSummary(c:WorkerCall,uid:String,onClick:()->Unit){Surface(Modifier.fillMaxWidth().clickable(onClick=onClick),color=if(c.status=="closed")OkSoft else PaleAmber,shape=RoundedCornerShape(16.dp)){
  Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
@@ -133,14 +140,18 @@ fun callStatus(c:WorkerCall,uid:String)=if(c.serverStatus=="unanswered")"수락�
 @Composable fun ReportPage(s:WorkerState,busy:Boolean,actions:WorkerActions,onSubmit:(String,String,String,String,Boolean,String?,()->Unit)->Unit,onSheet:(String)->Unit,onMore:()->Unit={}){
  var tab by rememberSaveable{mutableIntStateOf(1)};var title by rememberSaveable{mutableStateOf("")};var zone by rememberSaveable{mutableStateOf(s.zone)};var category by rememberSaveable{mutableStateOf("추락")};var note by rememberSaveable{mutableStateOf("")};var anonymous by rememberSaveable{mutableStateOf(true)};var photo by rememberSaveable{mutableStateOf<String?>(null)}
  OnCameraResult(actions,"risk_before","new"){photo=it.path}
- if(tab==0)ScreenHead("발견한 위험을\n알려 주세요") else ScreenTitle("현장 위험 현황")
+ ScreenTitle(if(tab==0)"새 신고" else "현장 위험 현황")
  if(tab==0){
-  Text("종류",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)
-  val kinds=listOf("추락","넘어짐","충돌","감전","기타");PickRow(kinds,kinds.indexOf(category)){category=kinds[it]}
-  PhotoCapture(photo,"위험 요소를 찍어요","사람이 아니라 위험한 곳만 찍어요"){actions.capture("risk_before","new")}
-  SLField("위치",zone,{zone=it},"예: 2층 동측 개구부")
-  SLCard{Row(verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("이름 숨기기",fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("사업주에게 신고자가 보이지 않아요",fontSize=14.sp,color=Muted)};Switch(anonymous,{anonymous=it},colors=SwitchDefaults.colors(checkedTrackColor=Brand))}}
-  SLButton(if(busy)"신고를 저장하고 있어요…" else "신고 보내기",{onSubmit(title,zone,category,note,anonymous,photo){title="";note="";photo=null;tab=1}},enabled=!busy&&zone.isNotBlank(),icon="arrow")
+  SLCard {Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("01",fontSize=13.sp,color=Brand,fontWeight=FontWeight.Bold);Spacer(Modifier.width(8.dp));Text("현장 사진",fontSize=16.sp,fontWeight=FontWeight.Bold,color=Ink);Spacer(Modifier.weight(1f));Text("선택",fontSize=13.sp,color=Muted)};PhotoCapture(photo){actions.capture("risk_before","new")};Text("위험 위치와 주변 환경이 보이도록 촬영해 주세요. 사람 대신 위험 요소를 찍어 주세요.",fontSize=13.sp,lineHeight=20.sp,color=Muted)}
+  SLCard {Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("02",fontSize=13.sp,color=Brand,fontWeight=FontWeight.Bold);Text("위험 내용",fontSize=16.sp,fontWeight=FontWeight.Bold,color=Ink)}
+   Text("위험 유형",fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=Ink)
+   Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(7.dp)){listOf("추락","넘어짐","충돌","감전","기타").forEach{c->FilterChip(category==c,{category=c},label={Text(c,fontSize=14.sp)},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=BrandSoft,selectedLabelColor=Brand),border=BorderStroke(1.dp,if(category==c)Brand else Line))}}
+   SLField("제목 · 선택",title,{title=it},"예: 개구부 덮개가 설치되지 않았어요")
+   SLField("발견 위치",zone,{zone=it},"예: 2층 동측 통로")
+   SLField("추가 설명 · 선택",note,{note=it},"동료에게 알려줄 내용을 적어 주세요.",singleLine=false)
+  }
+  SLCard {Row(verticalAlignment=Alignment.CenterVertically){SLIcon("lock",Modifier.size(20.dp));Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)){Text("관리자에게 이름 숨기기",fontSize=15.sp,fontWeight=FontWeight.SemiBold,color=Ink);Text("위험 내용과 사진으로 조치를 요청해요.",fontSize=13.sp,color=Muted)};Switch(anonymous,{anonymous=it},colors=SwitchDefaults.colors(checkedTrackColor=Brand))}}
+  SLButton(if(busy)"신고를 저장하고 있어요…" else "위험 신고 보내기",{onSubmit(title,zone,category,note,anonymous,photo){title="";note="";photo=null;tab=1}},enabled=!busy&&zone.isNotBlank(),icon="arrow")
   GhostButton("현장 위험 현황으로 돌아가기",{tab=1})
  }else{
   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){val count={status:String->s.riskCounts[status]?:s.risks.count{it.status==status}};SLPill("미조치 ${count("open")}",amber=true);SLPill("재확인 대기 ${count("resolved")}",brand=true);SLPill("완료 ${count("verified")}")}
@@ -161,7 +172,7 @@ private fun riskStatusLabel(risk:WorkerRisk)=when(risk.status){"verified"->"재�
  LaunchedEffect(month){onMonth(month)}
  LaunchedEffect(selectedDay){onDay(selectedDay)}
  val yearMonth=YearMonth.parse(month);val entries=s.work.filter{it.day.startsWith(month)}
- ScreenTitle(if(tab==0)"내 근로 기록" else "오늘의 기록")
+ ScreenTitle("내 근로 기록")
  ChoiceTabs(listOf("근로 기록","안전 타임라인"),tab){tab=it}
  if(tab==0){
   SLCard(color=BrandSoft){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("${yearMonth.monthValue}월 근로 현황",Modifier.weight(1f),fontSize=15.sp,fontWeight=FontWeight.Bold,color=Brand);SLPill(if(s.preview)"체험 데이터 포함" else "서버 기록",amber=s.preview)};Row(Modifier.fillMaxWidth()){
@@ -181,15 +192,9 @@ private fun riskStatusLabel(risk:WorkerRisk)=when(risk.status){"verified"->"재�
   if(day!=null)SLButton("선택한 날의 안전 기록",{tab=1},secondary=true)
   SLButton("기록 내보내기",onExport,icon="download")
  }else{
-  TimelineLegend()
-  val rows=s.events.filter{!s.preview||java.time.Instant.ofEpochMilli(it.time).atZone(koreaZone).toLocalDate().toString()==selectedDay}.sortedBy{it.time}
-  if(rows.isEmpty())SLCard{EmptyState("records","아직 확인 기록이 없어요","출근과 점검, 동료 확인부터 시작해 보세요.")}
-  else FlatBox{rows.forEach{entry->TimelineRow(clockText(entry.time),entry.title,entry.detail.ifBlank{null},estimate=entry.estimate,onClick={onSheet("event:${entry.id}")})}}
-  if(s.preview&&s.events.size>1)Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("기록 변경 탐지",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted);if(chainIntact(s.events))SLPill("변경 없음",fact=true)else SLPill("변경 의심",amber=true)}
-  Text("기록은 사업주가 지울 수 없어요. 잘못된 내용은 정정 기록으로만 고칠 수 있어요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
-  if(s.nextTimeline!=null)SLButton("기록 더 보기",onMore,secondary=true)
-  SLButton("내 근로 기록 보기",{tab=0})
-  GhostButton("정정 요청 확인",{onSheet("corrections")})
+  SmallNote("사람의 확인과 센서의 추정을 구분해 남겨요. 연결 모드의 원본은 서버에서 관리합니다.")
+  if(s.events.isEmpty())SLCard{EmptyState("records","아직 확인 기록이 없어요","출근과 점검, 동료 확인부터 시작해 보세요.")}
+  else SLCard{s.events.filter{!s.preview||java.time.Instant.ofEpochMilli(it.time).atZone(koreaZone).toLocalDate().toString()==selectedDay}.forEach{entry->Column(Modifier.fillMaxWidth().clickable{onSheet("event:${entry.id}")}){EventRow(entry,s.preview)}}};if(s.nextTimeline!=null)SLButton("기록 더 보기",onMore,secondary=true);SLButton("정정 요청 확인",{onSheet("corrections")},secondary=true)
  }
 }
 
@@ -197,7 +202,7 @@ private fun riskStatusLabel(risk:WorkerRisk)=when(risk.status){"verified"->"재�
  ScreenTitle("내 정보")
  SLCard {Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Avatar(s.name,56);Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)){Text(s.name,fontSize=21.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(listOf(s.job,s.zone).filter{it.isNotBlank()}.joinToString(" · "),fontSize=14.sp,color=Muted)};SLPill(if(s.preview)"체험 모드" else "현장 연결",amber=s.preview)}}
  SLCard {MenuRow("person","내 작업 정보","직종 · 작업 구역 · 예상 일당"){onSheet("profile")};HorizontalDivider(color=Line);MenuRow("link",if(s.preview)"실제 현장 연결하기" else "나의 현장",if(s.preview)"관리자의 참여 코드로 시작하세요" else "${s.site} · ${s.code}"){onSheet(if(s.preview)"connect" else "site")};HorizontalDivider(color=Line);MenuRow("bell","알림 설정","긴급 호출을 놓치지 않도록"){onSettings()};HorizontalDivider(color=Line);MenuRow("shield","기록과 개인정보","수집하는 정보와 내 열람 권한"){onSheet("privacy")};HorizontalDivider(color=Line);MenuRow("info","안전 감지 이용 안내","휴대 위치 · 감지의 한계"){onSheet("guide")}}
- if(s.preview){SectionHeading("앱 체험 도구");SLCard {Text("실제 센서 감시와 앱의 확인 흐름을 시험할 수 있어요. 아래 시험 신호는 다른 사람에게 전송되지 않습니다.",fontSize=14.sp,lineHeight=22.sp,color=Muted);MenuRow("activity","본인 확인 알림 체험","15초 응답 대기와 무응답 흐름"){onSheet("simulate-self")};HorizontalDivider(color=Line);MenuRow("people","동료 현장 확인 체험","수락 → 도착 → 상태 확인 → 마무리"){onSheet("simulate-peer")};HorizontalDivider(color=Line);MenuRow("clock","작업 중 안전 확인 체험","휴식 복귀 때 한 번 묻는 화면"){onSheet("simulate-checkin")};TextButton({onSheet("reset")}){Text("체험 기록 초기화",fontSize=14.sp,color=Muted)}}}
+ if(s.preview){SectionHeading("앱 체험 도구");SLCard {Text("실제 센서 감시와 앱의 확인 흐름을 시험할 수 있어요. 아래 시험 신호는 다른 사람에게 전송되지 않습니다.",fontSize=14.sp,lineHeight=22.sp,color=Muted);MenuRow("activity","본인 확인 알림 체험","15초 응답 대기와 무응답 흐름"){onSheet("simulate-self")};HorizontalDivider(color=Line);MenuRow("people","동료 현장 확인 체험","수락 → 도착 → 상태 확인 → 마무리"){onSheet("simulate-peer")};TextButton({onSheet("reset")}){Text("체험 기록 초기화",fontSize=14.sp,color=Muted)}}}
  else SLCard {MenuRow("logout","연결을 종료하고 체험 모드로","서버 기록은 그대로 보존됩니다"){onSheet("disconnect")}}
  Text("기록의 첫 번째 주인은 나예요.",Modifier.fillMaxWidth(),fontSize=14.sp,color=Muted,textAlign=TextAlign.Center)
 }

@@ -63,11 +63,6 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
                     if (controller.serverDown) {
                         SmallNote("지금은 서버에 연결할 수 없어요. 체험 모드로 이어서 볼 수 있어요. 기록은 이 폰에만 저장돼요.", amber = true)
                         SLButton("체험 모드로 계속", { controller.continueOffline(name) }, enabled = !busy, secondary = true)
-                        if (BuildConfig.DEBUG) {
-                            var server by rememberSaveable { mutableStateOf("") }
-                            SLField("서버 주소를 받았다면", server, { server = it }, "https://")
-                            SLButton("서버 주소 저장", { controller.changeServer(server) }, enabled = !busy && server.isNotBlank(), secondary = true)
-                        }
                     }
                     if (signup) SLField("이름", name, { name = it })
                     SLField("이메일", email, { email = it }, "name@example.com")
@@ -83,59 +78,44 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
                     if (controller.choices.isEmpty()) SLButton("참여한 현장 다시 확인", controller::reloadSites, enabled = !busy, secondary = true)
                     SLButton("현장 코드로 참여", { controller.beginOnboarding("code") }, enabled = !busy, secondary = true)
                 }
-                // 0-3 현장 코드
                 "code" -> {
                     var code by rememberSaveable { mutableStateOf("") }
                     val site = controller.pendingSite
-                    PageHeading("가입 2 / 4", "현장 코드를 입력해요", "반장님께 받은 코드를 입력하면 이 현장에 참여해요.")
+                    PageHeading("현장 연결", "현장 코드를 입력해요", "반장님께 받은 코드를 확인해 주세요.")
                     if (site == null) {
                         SLField("현장 코드", code, { code = it.uppercase() })
                         SLButton("현장 확인", { controller.lookup(code) }, enabled = code.isNotBlank() && !busy)
                     } else {
-                        SLCard(color = OkSoft) {
-                            SLPill("현장을 찾았어요")
-                            Text(site.name, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-                            Text("현장 책임자 " + site.foreman.ifBlank { "미등록" }, fontSize = 14.sp, color = Muted)
-                        }
-                        NoteText("현장에 참여해도 사업주가 내 기록을 지우거나 고칠 수 없어요.")
+                        DetailRow("현장", site.name)
+                        DetailRow("책임자", site.foreman.ifBlank { "미등록" })
                         SLButton("이 현장으로 참여", controller::joinPending, enabled = !busy)
                         SLButton("다른 코드 입력", controller::cancelSiteConfirmation, enabled = !busy, secondary = true)
                     }
-                    GhostButton("코드가 없어요 · 체험으로 보기", controller::usePreview, enabled = !busy)
+                    SLButton("코드가 없어요 · 체험으로 보기", controller::usePreview, enabled = !busy, secondary = true)
                 }
-                // 0-4 내 작업 정보
                 "profile" -> {
-                    val jobs = listOf("형틀 목공", "철근", "설비", "전기", "미장·조적", "기타")
                     var job by rememberSaveable { mutableStateOf(controller.state.job) }
-                    var other by rememberSaveable { mutableStateOf(controller.state.job.isNotBlank() && controller.state.job !in jobs) }
                     var zone by rememberSaveable { mutableStateOf(controller.state.zone) }
                     var wage by rememberSaveable { mutableStateOf("") }
-                    PageHeading("가입 3 / 4", "내 작업 정보를 알려 주세요", controller.state.site)
-                    Text("직종", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Muted)
-                    PickRow(jobs, if (other) jobs.lastIndex else jobs.indexOf(job)) { other = it == jobs.lastIndex; job = if (other) "" else jobs[it] }
-                    if (other) SLField("직종 직접 입력", job, { job = it })
-                    SLField("작업 구역", zone, { zone = it }, "예: 2층 슬래브")
-                    SLField("하루 예상 일당 · 선택", wage, { wage = it.filter(Char::isDigit).take(8) }, "예: 230000")
-                    NoteText("예상 일당은 내 기록용이에요. 실제 지급액과 다를 수 있어요.")
-                    SLButton("저장", { controller.finishProfile(job, zone, wage.toIntOrNull()) },
-                        enabled = !busy && job.isNotBlank() && zone.isNotBlank() && (wage.isBlank() || (wage.toIntOrNull() ?: -1) in 0..10000000))
-                }
-                // 0-5 권한 안내
-                "permissions" -> {
-                    PageHeading("가입 4 / 4", "이 권한이 필요해요", "필요한 때만 쓰고, 이유를 먼저 알려 드려요.")
-                    FlatBox {
-                        listOf(Triple("알림", "긴급 호출을 놓치지 않으려고요", true), Triple("움직임 감지", "충격을 감지하고, 켜져 있음을 알림으로 보여요", true),
-                            Triple("위치", "출근 확인과 긴급 상황에서만 써요", false), Triple("카메라", "동료·위험 요소 촬영. 앱 안에서만 찍어요", false)).forEachIndexed { i, (name, why, needed) ->
-                            if (i > 0) HorizontalDivider(color = Line)
-                            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Column(Modifier.weight(1f)) { Text(name, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Ink); Text(why, fontSize = 14.sp, lineHeight = 21.sp, color = Muted) }
-                                if (needed) SLPill("필요해요", brand = true) else SLPill("선택", neutral = true)
-                            }
-                        }
+                    PageHeading("내 작업 정보", "어떤 일을 하세요?", controller.state.site)
+                    listOf(listOf("형틀 목공", "철근", "설비"), listOf("전기", "미장·조적", "기타")).forEach { jobs ->
+                        ChoiceTabs(jobs, jobs.indexOf(job)) { job = jobs[it] }
                     }
-                    NoteText("허용하지 않아도 근로 기록은 쓸 수 있어요. 일부 기능은 제한돼요.")
+                    SLField("직종", job, { job = it })
+                    SLField("작업 구역", zone, { zone = it })
+                    SLField("하루 예상 일당 · 선택", wage, { wage = it.filter(Char::isDigit).take(8) })
+                    SmallNote("예상 일당은 내 기록용이에요. 실제 지급액과 다를 수 있어요.")
+                    SLButton("저장", { controller.finishProfile(job, zone, wage.toIntOrNull()) },
+                        enabled = !busy && job.isNotBlank() && zone.isNotBlank() && (wage.isBlank() || (wage.toIntOrNull()?:-1) in 0..10000000))
+                }
+                "permissions" -> {
+                    PageHeading("권한 안내", "필요할 때만 사용해요", "허용하지 않아도 출퇴근 기록을 남길 수 있어요.")
+                    DetailRow("알림", "잠금 화면에서 안전 요청 확인")
+                    DetailRow("움직임 센서", "직접 감시를 켠 작업 시간")
+                    DetailRow("위치 · 선택", "출근 확인과 긴급 상황")
+                    DetailRow("카메라 · 선택", "동료 보호구와 위험 요소 촬영")
                     SLButton("권한 허용하고 시작", actions.onboardingPermissions)
-                    GhostButton("나중에 할게요", controller::finishOnboarding)
+                    SLButton("나중에 할게요", controller::finishOnboarding, secondary = true)
                 }
             }
         }
