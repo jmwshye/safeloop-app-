@@ -37,4 +37,10 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   feedback="동료 확인을 저장했어요."
  }
 
+ fun submitRisk(title:String,zone:String,category:String,note:String,anonymous:Boolean,localPhoto:String?,finished:()->Unit)=action {
+  require(title.isNotBlank()&&zone.isNotBlank()){"위험 내용과 위치를 입력해 주세요."};require(localPhoto!=null){"현장 사진을 촬영해 주세요."}
+  if(state.preview){val risk=WorkerRisk(UUID.randomUUID().toString(),title,zone,note,category,photo=localPhoto,anonymous=anonymous);update(state.copy(risks=listOf(risk)+state.risks));event("위험 요소 신고","$title · $zone")}
+  feedback=if(state.preview)"체험 기록에 위험 신고를 저장했어요." else "위험 신고를 현장에 전달했어요.";finished()
+ }
+
 }
