@@ -1,10 +1,10 @@
 # 안전고리 와이어프레임
 
-2026-11-01 · 검토용 초안 v1
+2026-11-02 · 앱 화면 기준 v1
 
-앱 화면은 이 문서를 따릅니다.
+앱 화면은 이 문서와 캔버스를 따릅니다.
 
-- **캔버스(와이어프레임): [안전고리 와이어프레임](https://claude.ai/artifact/XuvoVp4sTKYiqqbA9EHAaT)** (현재 나만 볼 수 있음)
+- **캔버스(와이어프레임): [안전고리 와이어프레임](https://claude.ai/artifact/XuvoVp4sTKYiqqbA9EHAaT)** (링크로 공유)
 - 제품 기준: [프로젝트 헌장](https://claude.ai/artifact/QadKtQskLYTUSGinpBuT5c), [기획서](기획서.md)
 - 이전 시안: [안전고리 화면 시안](https://claude.ai/artifact/Lz6o6yGJyZoNdL1Q1LpxB8) (화면 흐름은 재사용, 색과 틀은 새로 설계)
 

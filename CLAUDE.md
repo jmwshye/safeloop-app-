@@ -25,7 +25,7 @@
 | 서버 | `origin/taegyu/feat/backend-safety-reports` (PR #7~#9가 차례로 쌓임) |
 | 관리자 웹 | 별도 저장소 `jmwshye/safeloop` (Firebase 연결 상태) |
 
-서버는 NestJS(`backend/`)로 통일하고 Firebase는 푸시(FCM)에만 쓴다(2026-11-02 합의). 합치는 순서는 `docs/STATUS.md`를 따른다.
+앱 기준은 #10 코드이고 화면 기준은 `docs/wireframe.md`와 캔버스다. 서버는 NestJS(`backend/`)로 통일하고 Firebase는 푸시(FCM)에만 쓴다(2026-11-02 확정). 합치는 순서는 `docs/STATUS.md`를 따른다.
 
 ## 제품 규칙
 
