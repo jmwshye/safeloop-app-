@@ -27,4 +27,14 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  fun checkOut()=action { update(state.checkout());event("퇴근 기록","오늘의 근로 기록을 마무리했어요.");Unit;feedback="오늘도 수고하셨어요. 근로 기록을 확인해 보세요." }
  fun resetPreview(){Unit;update(WorkerState.preview());feedback="체험 기록을 초기화했어요."}
  fun emergency(){event("119 전화 화면 열기","전화 화면 실행 요청 · 통화 연결 여부는 확인하지 않습니다.")}
+ fun saveChecks(values:List<String>)=action {
+  require(values.size==3&&values.none{it.isBlank()}){"세 항목의 확인 상태를 모두 선택해 주세요."}
+  if(state.preview){update(state.copy(checks=values));event("작업 전 확인",if(values.all{it=="확인"})"3개 항목 확인 완료" else "개선 필요·모름 항목이 있어요. 책임자에게 확인해 주세요.")}
+  feedback="작업 전 확인을 저장했어요."
+ }
+ fun checkPeer(observed:String,localPhoto:String?)=action {
+  if(state.preview){update(state.copy(peerChecked=observed=="착용"));event("동료 교차 확인",if(observed=="착용")"${state.buddyName} · ${if(localPhoto==null)"버튼 확인" else "사진 확인"}" else "${state.buddyName} · 개선 필요")}
+  feedback="동료 확인을 저장했어요."
+ }
+
 }
