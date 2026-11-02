@@ -128,7 +128,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   require(observed=="착용"||observed=="미착용")
   val checked=observed=="착용"
   require(checked||localPhoto==null){"불일치 모습은 저장하지 않아요."}
-  if(state.preview){update(state.copy(peerEvidence=listOf(PeerEvidence(state.uid,"preview-buddy-shift",if(checked)"checked" else "mismatch",now,localPhoto,localPhoto)),peerChecked=checked,peerStatus=if(!checked)"mismatch" else if(localPhoto!=null)"photo_confirmed" else "statement_only"));event("동료 교차 확인",if(checked)state.buddyName else "불일치 · 조치 후 다시 확인")}
+  if(state.preview){update(state.copy(peerEvidence=listOfNotNull(PeerEvidence(state.uid,"preview-buddy-shift",if(checked)"checked" else "mismatch",now,localPhoto,localPhoto),PeerEvidence("preview-buddy","preview-self-shift","checked",now).takeIf{checked}),peerChecked=checked,peerStatus=if(!checked)"mismatch" else if(localPhoto!=null)"photo_confirmed" else "statement_only"));event("동료 교차 확인",if(checked)state.buddyName else "불일치 · 조치 후 다시 확인")}
   else{val originalBuddy=state.verifiedBuddyTarget(target);val image=if(checked&&localPhoto!=null)upload(localPhoto,"ppe")else null;repository.request("PUT","/attendances/$originalBuddy/peer-check",mapOf("outcome" to if(checked)"checked" else "mismatch","photoId" to image));changed()}
   feedback="동료 확인을 저장했어요.";onSaved()
  }
@@ -147,6 +147,8 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   if(state.preview){val risk=state.risks.first{it.id==id};require(risk.fixerName!=state.name){"조치한 사람 외 동료가 확인해 주세요."};update(state.copy(risks=state.risks.map{if(it.id==id)it.copy(status="verified",verifierName=state.name,verifiedAt=now,canRecheck=false)else it}))}
   else{repository.request("PUT","$sitePath/risks/$id/recheck",emptyMap());changed()};feedback="재확인을 저장했어요."
  }
+ // 체험 모드에는 다른 동료가 없어서 재확인 장면을 대신 보여준다.
+ fun simulateRecheck(id:String)=action {require(state.preview);update(state.copy(risks=state.risks.map{if(it.id==id)it.copy(status="verified",verifierName=state.buddyName,verifiedAt=now)else it}));event("위험 재확인",state.buddyName+" · 체험 예시")}
  fun setCarried(enabled:Boolean)=action {
   if(!enabled){app.stopService(Intent(app,SafetyService::class.java));state=state.copy(monitoring=false)}
   if(state.preview){update(state.copy(carried=enabled,deviceState=if(enabled)"carried" else "not_carried"));event("기기 휴대 상태",if(enabled)"휴대 중" else "미휴대")}
@@ -160,7 +162,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   update(state.copy(monitoring=enabled));feedback=if(enabled)"감시 중에는 휴대폰을 몸에 휴대해 주세요." else "움직임 감시를 종료했어요."
  }
  fun highRisk(task:String?)=action {
-  if(state.preview){require(state.currentShift!=null);val prompt=WorkPrompt(UUID.randomUUID().toString(),if(task==null)"high_risk_end" else "high_risk_start",now,"pending");update(state.copy(highRiskTask=task,highRiskStartedAt=task?.let{now},prompts=state.prompts+prompt));event("고위험 작업",task?:"종료")}
+  if(state.preview){require(state.currentShift!=null);val prompt=WorkPrompt(UUID.randomUUID().toString(),if(task==null)"high_risk_end" else "high_risk_start",now,"pending");update(state.copy(highRiskTask=task,highRiskStartedAt=task?.let{now},prompts=state.prompts+prompt));event("고위험 작업",task?.let(::highRiskLabel)?:"종료")}
   else{repository.request("PUT","/attendances/${shiftId()}/high-risk",mapOf("task" to task));changed()};monitoringPrefs.edit().putString("highRiskTask",task).apply()
  }
  fun answerPrompt(id:String,answer:String)=action {
@@ -180,20 +182,21 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  @Suppress("DEPRECATION") fun refreshMonitoring(){val active=(app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getRunningServices(100).any{it.service.className==SafetyService::class.java.name};state=state.copy(monitoring=active)}
  private fun readPreviewSensor(){if(!state.preview)return;val id=monitoringPrefs.getString("previewSignalId",null)?:return;if(monitoringPrefs.getString("previewProcessed",null)==id)return;val at=monitoringPrefs.getLong("previewSignalAt",now);update(state.copy(calls=listOf(WorkerCall(id,subject=state.uid,subjectName=state.name,zone=state.zone,deadline=at+15000,createdAt=at))+state.calls));event("이상 움직임 감지","센서 추정 신호",true);monitoringPrefs.edit().putString("previewProcessed",id).apply()}
  fun simulateSelf(){if(!state.preview)return;if(state.activeCalls.any{it.isSubject(state.uid)})return;val call=WorkerCall(UUID.randomUUID().toString(),subject=state.uid,subjectName=state.name,zone=state.zone,createdAt=now);update(state.copy(calls=listOf(call)+state.calls));event("체험 이상 신호","사고 확정 아님",true);notifyPreview("괜찮으세요?","15초 안에 안전 상태를 확인해 주세요.",call.id)}
+ fun simulatePrompt(){if(!state.preview)return;val prompt=WorkPrompt(UUID.randomUUID().toString(),"break_return",now,"pending");update(state.copy(prompts=state.prompts+prompt));requestedRoute="prompt:${prompt.id}"}
  fun simulateIncoming(){if(!state.preview)return;val call=WorkerCall(UUID.randomUUID().toString(),subject="preview-buddy",subjectName=state.buddyName,zone=state.buddyZone,stage="peer",createdAt=now);update(state.copy(calls=listOf(call)+state.calls));openCallId=call.id}
  fun respond(callId:String,response:String,localPhoto:String?=null)=runIncidentAction(callId) {
   val call=state.calls.firstOrNull{it.id==callId}?:error("요청 정보를 다시 불러와 주세요.")
   if(state.preview){val next=when{
-   response=="safe"->{require(call.isSubject(state.uid));if(call.stage=="self"&&now<call.deadline)call.copy(status="closed",resolution="worker_confirmed_okay",respondedAt=now)else call.copy(workerResponse="okay",respondedAt=now)}
+   response=="safe"->{require(call.isSubject(state.uid));if((call.stage=="self"&&now<call.deadline)||call.acceptedBy==null)call.copy(status="closed",resolution="worker_confirmed_okay",respondedAt=now)else call.copy(workerResponse="okay",respondedAt=now)}
    response=="help"->call.copy(stage="peer")
-   response=="accepted"->call.accept(state.uid)
+   response=="accepted"->call.accept(state.uid).copy(acceptedAt=now)
    response=="arrived"->call.arrive(state.uid)
    response=="declined"->call.copy(serverStatus="unanswered")
    response=="retry"->call.copy(serverStatus="calling")
    response.startsWith("observe:")->call.observe(state.uid,response.substringAfter(':'))
    response.startsWith("finish:")->call.verify(state.uid,localPhoto,response.substringAfter(':'))
    else->error("지원하지 않는 응답입니다.")
-  };update(state.copy(calls=state.calls.map{if(it.id==callId)next else it}));event("안전 확인 응답",response)}
+  };update(state.copy(calls=state.calls.map{if(it.id==callId)next else it}));event(responseLabel(response),call.subjectName)}
   else{val path="/incidents/$callId";val result=when{
    response=="safe"||response=="help"->{val key="$callId:$response";val body=mapOf("requestId" to requestId(key),"response" to if(response=="safe")"okay" else "help_needed")
     val r=try{repository.request("PUT","$path/worker-response",body)}catch(e:java.io.IOException){
