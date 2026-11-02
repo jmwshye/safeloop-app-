@@ -277,6 +277,25 @@ test(
         details: { photoId: null },
       }),
     );
+    const promptId = randomUUID();
+    await db.query(
+      "insert into work_prompts(id,attendance_id,kind,due_at,expires_at) values ($1,$2,'high_risk_start',now(),now()+interval '15 minutes')",
+      [promptId, shift],
+    );
+    const promptEvent = await database.db.transaction((tx) =>
+      appendEvent(tx, {
+        siteId,
+        entityId: promptId,
+        actorId: worker.id,
+        subjectId: worker.id,
+        type: 'work.check_in_answered',
+        source: 'human',
+      }),
+    );
+    await db.query(
+      'insert into record_corrections(site_id,event_id,requester_id,request_id,note) values ($1,$2,$3,$4,$5)',
+      [siteId, promptEvent.id, worker.id, randomUUID(), '작업 중 응답 정정'],
+    );
     const original = (
       await db.query(
         "SELECT id FROM audit_events WHERE entity_id=$1 AND type='attendance.check_in'",
@@ -309,14 +328,22 @@ test(
         assert.equal(month.summary.statementOnlyChecks, 1);
         assert.equal(month.summary.incompleteShifts, 1);
         assert.equal(month.summary.missingWages, 1);
-        assert.equal(month.summary.pendingCorrections, 1);
-        assert.equal(month.corrections[0].eventId, original);
+        assert.equal(month.summary.pendingCorrections, 2);
+        assert.equal(
+          month.workers.find((w) => w.userId === worker.id).pendingCorrections,
+          2,
+        );
+        assert.deepEqual(
+          new Set(month.corrections.map((c) => c.eventId)),
+          new Set([original, promptEvent.id]),
+        );
         const workerPath =
           prefix + '/reports/work?month=2026-11&userId=' + worker.id;
         assert.equal((await call('GET', workerPath, fixer)).status, 403);
         const mine = await (await call('GET', workerPath, worker)).json();
         const managers = await (await call('GET', workerPath, manager)).json();
         assert.deepEqual(mine.shifts, managers.shifts);
+        assert.ok(mine.corrections.some((c) => c.eventId === promptEvent.id));
         assert.deepEqual(
           mine.shifts.map((s) => s.id),
           [shift],
@@ -817,6 +844,62 @@ test(
         await event(two, worker, fixer, 'peer.mismatch');
         const preserved = await (await call('GET', route, manager)).json();
         assert.equal(preserved.summary.mutualChecks, 2);
+      },
+    );
+    await t.test(
+      '본인 확인 종료 보고서와 도착 후 관찰 전 관리자 미확인 인원',
+      async () => {
+        const route = '/sites/' + otherSiteId;
+        await db.query(
+          'insert into site_memberships(site_id,user_id) values($1,$2) on conflict do nothing',
+          [otherSiteId, verifier.id],
+        );
+        await db.query(
+          "insert into attendances(site_id,user_id,work_date,checked_in_at) values ($1,$2,(now() at time zone 'Asia/Seoul')::date,now()-interval '10 minutes')",
+          [otherSiteId, verifier.id],
+        );
+        const api = async (method, path, actor, body) => {
+          const response = await call(method, path, actor, body);
+          assert.ok(response.ok, method + ' ' + path + ' ' + response.status);
+          return response.json();
+        };
+        const self = (
+          await api('POST', '/incidents', verifier, {
+            siteId: otherSiteId,
+            source: 'abnormal_movement',
+            requestId: randomUUID(),
+          })
+        ).incident;
+        await api(
+          'PUT',
+          '/incidents/' + self.id + '/worker-response',
+          verifier,
+          { response: 'okay', requestId: randomUUID() },
+        );
+        const report = await api(
+          'GET',
+          route + '/reports/incidents/' + self.id,
+          verifier,
+        );
+        assert.equal(report.incident.resolution, 'worker_confirmed_okay');
+        assert.ok(!report.dataGaps.includes('현장 도착 미확인'));
+        const incident = (
+          await api('POST', '/incidents', verifier, {
+            siteId: otherSiteId,
+            source: 'manual_help',
+            requestId: randomUUID(),
+          })
+        ).incident;
+        const path = '/incidents/' + incident.id;
+        await api('PUT', path + '/accept', outsider, {});
+        await api('PUT', path + '/arrival', outsider, {});
+        const count = async () =>
+          (await api('GET', route + '/dashboard', outsider)).counts.unverified;
+        assert.equal(await count(), 1);
+        await api('PUT', path + '/observation', outsider, {
+          condition: 'conscious',
+        });
+        assert.equal(await count(), 0);
       },
     );
   },

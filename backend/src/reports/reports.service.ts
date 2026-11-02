@@ -13,7 +13,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import { DatabaseService } from '../database.service.js';
-import { attendances, sites, users } from '../database/schema.js';
+import { attendances, sites, users, workPrompts } from '../database/schema.js';
 import { incidents as calls } from '../database/incident-schema.js';
 import {
   auditEvents,
@@ -298,6 +298,23 @@ async function evidenceFor(
     if (list) list.push(record.id);
     else siteRecords.set(record.siteId, [record.id]);
   }
+  const promptOwners = new Map<string, string>();
+  for (const [siteId, ids] of siteRecords) {
+    const prompts = await db
+      .select({ id: workPrompts.id, shiftId: workPrompts.attendanceId })
+      .from(workPrompts)
+      .innerJoin(attendances, eq(attendances.id, workPrompts.attendanceId))
+      .where(
+        and(
+          eq(attendances.siteId, siteId),
+          inArray(workPrompts.attendanceId, ids),
+        ),
+      );
+    for (const prompt of prompts) {
+      promptOwners.set(prompt.id, prompt.shiftId);
+      ids.push(prompt.id);
+    }
+  }
   const filters = Array.from(siteRecords, ([siteId, ids]) =>
     and(eq(auditEvents.siteId, siteId), inArray(auditEvents.entityId, ids)),
   );
@@ -343,7 +360,7 @@ async function evidenceFor(
         .where(inArray(recordCorrections.eventId, eventIds))
         .orderBy(asc(recordCorrections.createdAt))
     : [];
-  return { events, corrections };
+  return { events, corrections, promptOwners };
 }
 type Evidence = Awaited<ReturnType<typeof evidenceFor>>;
 
@@ -467,7 +484,8 @@ export class ReportsService {
           amountBasis: 'expected',
           summary,
           shifts: rows,
-          ...evidence,
+          events: evidence.events,
+          corrections: evidence.corrections,
           dataGaps: missing,
         };
         const file: ReportFile = {
@@ -548,8 +566,10 @@ export class ReportsService {
         const pendingCounts = new Map<string, number>();
         for (const c of pending)
           pendingCounts.set(
-            c.entityId,
-            (pendingCounts.get(c.entityId) ?? 0) + 1,
+            evidence.promptOwners.get(c.entityId) ?? c.entityId,
+            (pendingCounts.get(
+              evidence.promptOwners.get(c.entityId) ?? c.entityId,
+            ) ?? 0) + 1,
           );
         const workers = Array.from(grouped, ([userId, shifts]) => ({
           userId,
@@ -584,7 +604,8 @@ export class ReportsService {
           summary,
           workers,
           dailyRecords,
-          ...evidence,
+          events: evidence.events,
+          corrections: evidence.corrections,
           dataGaps: missing,
         };
         const columns = [
@@ -847,7 +868,8 @@ export class ReportsService {
       missing.push('충격 세기 미기록');
     if (!evidence.events.some((e) => e.entityId === id))
       missing.push('호출의 원본 사건 미기록');
-    if (!arrivedAt) missing.push('현장 도착 미확인');
+    if (!arrivedAt && resolution !== 'worker_confirmed_okay')
+      missing.push('현장 도착 미확인');
     if (!closedAt) missing.push('대응 종료 미확인');
     const call = {
       id: incidentId,
@@ -888,7 +910,8 @@ export class ReportsService {
       kind: 'incident',
       generatedAt,
       incident: call,
-      ...evidence,
+      events: evidence.events,
+      corrections: evidence.corrections,
       dataGaps: missing,
       disclaimer,
     };
