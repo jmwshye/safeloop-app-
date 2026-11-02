@@ -44,20 +44,15 @@ fun IncidentReportSheet(id: String, controller: WorkerController, share: (String
     for (check in (ppe?.get("checks") as? List<*>).orEmpty().filterIsInstance<Map<*, *>>()) {
         val from = (check["photographer"] as? Map<*, *>)?.get("name") ?: "촬영자 미확인"
         val to = (check["subject"] as? Map<*, *>)?.get("name") ?: "대상 미확인"
-        val evidence = when (check["evidence"]) {
-            "photo" -> "사진 기록"
-            "statement" -> "사진 없는 진술"
-            "missing_check" -> "확인 기록 없음"
-            "mismatch" -> "불일치"
-            else -> "증거 미확인"
-        }
+        val evidence = ppeReportLabel(check["outcome"], check["evidence"])
         DetailRow("$from → $to", evidence)
     }
     for (recipient in (incident["recipients"] as? List<*>).orEmpty().filterIsInstance<Map<*, *>>()) {
         Text(recipient["name"]?.toString().orEmpty(),fontWeight=FontWeight.Bold)
-        for ((field,label) in listOf("sentAt" to "발송","receivedAt" to "단말 수신","acceptedAt" to "수락")) {
-            parseTime(recipient[field])?.let { DetailRow(label, clockText(it)) }
-        }
+        val stages = listOf("requestedAt" to "호출 요청", "sentAt" to "발송", "receivedAt" to "단말 수신",
+            "openedAt" to "열람", "acceptedAt" to "수락", "declinedAt" to "참여 어려움")
+        stages.mapNotNull { (field,label) -> parseTime(recipient[field])?.let { it to label } }
+            .sortedBy { it.first }.forEach { (at,label) -> DetailRow(label, clockText(at)) }
     }
     SectionHeading("시각별 원본 기록")
     val events = (data["events"] as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()

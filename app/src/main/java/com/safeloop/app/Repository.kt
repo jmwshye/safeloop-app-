@@ -27,8 +27,12 @@ class Repository(context: Context) {
     var siteId: String
         get() = prefs.getString("nestSiteId", "") ?: ""
         set(value) { prefs.edit().putString("nestSiteId", value).commit() }
-    val deviceId: String get() = synchronized(deviceLock) {
-        prefs.getString("nestDeviceId", null) ?: UUID.randomUUID().toString().also { prefs.edit().putString("nestDeviceId", it).commit() }
+    val deviceId: String get() = deviceIdFor(currentUser?.uid ?: error("로그인한 계정을 확인해 주세요."))
+    private fun deviceIdFor(userId: String): String = synchronized(deviceLock) {
+        val installation = prefs.getString("nestInstallationId", null) ?: UUID.randomUUID().toString().also {
+            prefs.edit().putString("nestInstallationId", it).commit()
+        }
+        pushDeviceId(installation, userId)
     }
     suspend fun signIn(email: String, password: String) {
         val result = json("POST", "/auth/login", mapOf("email" to email, "password" to password), authenticated = false)
@@ -43,12 +47,13 @@ class Repository(context: Context) {
     suspend fun logout() {
         val ending = sessions.read()
         if (ending == null) { withContext(NonCancellable + Dispatchers.IO) { clearLocal() }; return }
-        try { json("DELETE", "/push-devices/$deviceId", expected = OfflineIdentity(ending.user.uid, ending.id, siteId)) }
+        try { json("DELETE", "/push-devices/${deviceIdFor(ending.user.uid)}", expected = OfflineIdentity(ending.user.uid, ending.id, siteId)) }
         catch (_: IOException) { /* Local logout must work while offline. */ }
         finally { withContext(NonCancellable + Dispatchers.IO) { clearLocal(ending.token) } }
     }
     private fun clearLocal(expectedToken: String? = null) {
         if (!sessions.clear(expectedToken)) return
+        context.getSystemService(android.app.NotificationManager::class.java).cancelAll()
         context.stopService(Intent(context, SafetyService::class.java))
         WorkManager.getInstance(context).cancelAllWorkByTag(queueTag)
         prefs.edit().remove("nestSiteId").remove("localCallId").remove("localAlert").remove("ackAlert")
@@ -119,6 +124,34 @@ class Repository(context: Context) {
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS).addTag(queueTag).addTag(pendingTag()).build()
         WorkManager.getInstance(context).enqueue(work)
     }
+    fun scheduleSignalRecovery(requestId: String) {
+        val session = sessions.read() ?: return
+        val work = OneTimeWorkRequestBuilder<SignalRecoveryWorker>()
+            .setInputData(workDataOf("requestId" to requestId, "uid" to session.user.uid, "session" to session.id, "site" to siteId))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInitialDelay(3, TimeUnit.SECONDS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+            .addTag(queueTag).build()
+        WorkManager.getInstance(context).enqueueUniqueWork("signal:$requestId", ExistingWorkPolicy.KEEP, work)
+    }
+
+    internal suspend fun recoverSignal(requestId: String, expected: OfflineIdentity): String? {
+        if (!expected.matches(identity) || prefs.getString("signalSession",null) != expected.sessionId ||
+            prefs.getString("signalSite",null) != siteId) return null
+        val saved = prefs.getString("pendingSignal", null)?.let(::JSONObject) ?: return null
+        if (saved.optString("requestId") != requestId) return null
+        val body = jsonMap(saved).toMutableMap()
+        if (body["detectedAt"] == null) prefs.getLong("signalAt",0L).takeIf { it > 0 }?.let {
+            body["detectedAt"] = Instant.ofEpochMilli(it).toString()
+        }
+        val result = queuedRequest(expected, "POST", "/incidents", body)
+        val incident = result["incident"] as? Map<*, *> ?: throw IOException("사건 응답이 비어 있어요.")
+        val id = incident["id"] as? String ?: throw IOException("사건 번호를 확인할 수 없어요.")
+        if (prefs.getString("localAlert", null) == requestId && expected.matches(identity)) {
+            prefs.edit().putString("localCallId",id).remove("pendingSignal").remove("signalFailed").commit()
+        }
+        return id
+    }
     companion object { private val deviceLock = Any(); private const val queueTag = "nest-offline-commands" }
 }
 
@@ -138,12 +171,36 @@ class CommandWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val method = inputData.getString("method") ?: return Result.failure()
         val path = inputData.getString("path") ?: return Result.failure()
         return try {
-            repo.queuedRequest(expected, method, path, jsonMap(JSONObject(inputData.getString("body") ?: "{}")))
+            val body = jsonMap(JSONObject(inputData.getString("body") ?: "{}"))
+            try {
+                repo.queuedRequest(expected, method, path, body)
+            } catch(error: ApiException) {
+                val expiredIncidentDial = method == "PUT" && path.startsWith("/incidents/") && path.endsWith("/dial-intent")
+                    && error.code == "INCIDENT_STATE_CONFLICT" && !expected.siteId.isNullOrBlank()
+                if (!expiredIncidentDial) throw error
+                // Opening 119 after a case was closed is a site event, not part of its closed history.
+                repo.queuedRequest(expected, "POST", "/sites/${expected.siteId}/dial-intents", body)
+            }
             Result.success()
         } catch (error: ApiException) {
             if (error.retryable && runAttemptCount < 8) Result.retry() else Result.failure()
         } catch (_: IOException) {
             if (runAttemptCount < 8) Result.retry() else Result.failure()
         } catch (_: IllegalArgumentException) { Result.failure() }
+    }
+}
+
+
+class SignalRecoveryWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val repo = Repository(applicationContext)
+        val expected = OfflineIdentity(inputData.getString("uid"),inputData.getString("session"),inputData.getString("site"))
+        val requestId = inputData.getString("requestId") ?: return Result.failure()
+        return try {
+            repo.recoverSignal(requestId, expected)
+            Result.success()
+        } catch (error: ApiException) {
+            if (error.retryable) Result.retry() else Result.failure()
+        } catch (_: IOException) { Result.retry() }
     }
 }

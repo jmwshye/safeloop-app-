@@ -15,12 +15,12 @@ class PushService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val site = message.data["siteId"]?.takeIf(::isUuid) ?: return
         val repo = Repository(this)
-        if (!repo.hasSession || repo.siteId != site) return
+        if (!pushBelongsTo(message.data["recipientId"], site, repo.currentUser?.uid, repo.siteId)) return
         val type = message.data["type"] ?: return
         val incident = message.data["incidentId"]?.takeIf(::isUuid)
         val eventId = message.data["eventId"] ?: return
         if (type == "incident_alert" && incident != null) {
-            repo.queueRequest("PUT", "/incidents/$incident/receipt", mapOf("stage" to "received"), site)
+            repo.queueRequest("PUT", "/incidents/$incident/receipt", mapOf("stage" to "received", "occurredAt" to java.time.Instant.now().toString()), site)
         }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("alerts", "안전 확인 요청", NotificationManager.IMPORTANCE_HIGH))
@@ -31,16 +31,17 @@ class PushService : FirebaseMessagingService() {
             "incident_alert" -> "동료 안전 확인 요청"
             "incident_verification_overdue" -> "현장 상태 확인이 늦어지고 있어요"
             "incident_observation" -> "현장 상태가 확인됐어요"
-            "incident_worker_safe" -> "작업자가 괜찮다고 응답했어요"
+            "incident_worker_safe" -> "작업자가 안전 확인에 응답했어요"
             "incident_closed" -> "긴급 대응이 마무리됐어요"
             "work_prompt" -> "작업 상태를 확인해 주세요"
             "high_risk" -> "동료가 고위험 작업 중이에요"
+            "high_risk_end" -> "동료가 고위험 작업을 마쳤어요"
             "safety_review" -> "안전 점검 확인 요청"
             "risk_action" -> "위험 요소 조치 요청"
             else -> return
         }
         val intent = Intent(this, MainActivity::class.java).putExtra("siteId", site).putExtra("callId", incident)
-            .putExtra("eventId", eventId).putExtra("notificationType", type).putExtra("entityId", message.data["entityId"])
+            .putExtra("eventId", eventId).putExtra("recipientId", repo.currentUser?.uid).putExtra("notificationType", type).putExtra("entityId", message.data["entityId"])
             .putExtra("peerAlert", urgent)
         val id = if (urgent && incident != null) incident.hashCode() else eventId.hashCode()
         val pending = PendingIntent.getActivity(this, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -50,7 +51,7 @@ class PushService : FirebaseMessagingService() {
             .setContentIntent(pending).setPriority(if (urgent) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT).setAutoCancel(true)
         if (urgent) {
             val dial = PendingIntent.getActivity(this, incident?.hashCode() ?: 119, Intent(this, MainActivity::class.java)
-                .setAction("com.safeloop.app.DIAL_119").putExtra("dial119", true).putExtra("siteId", site).putExtra("callId", incident),
+                .setAction("com.safeloop.app.DIAL_119").putExtra("dial119", true).putExtra("recipientId", repo.currentUser?.uid).putExtra("siteId", site).putExtra("callId", incident),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             notification.addAction(0, "현장 확인", pending).addAction(0, "119 전화 화면", dial)
         }

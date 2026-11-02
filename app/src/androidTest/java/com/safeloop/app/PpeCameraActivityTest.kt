@@ -1,6 +1,9 @@
 package com.safeloop.app
 
 import android.app.Activity
+import android.app.Application
+import android.graphics.Bitmap
+import androidx.lifecycle.SavedStateHandle
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -34,6 +37,30 @@ class PpeCameraActivityTest {
             putExtra("guide", "peer_check")
         }
         return ActivityScenario.launchActivityForResult(intent)
+    }
+
+    @Test fun cameraResultReturnsToTheOriginalBuddyAfterSavedStateRestoration() {
+        val app=InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val saved=SavedStateHandle()
+        val first=WorkerCapture(app,saved)
+        assertTrue(first.begin("session:site","peer_check","buddy-B"))
+        val output=checkNotNull(first.file)
+        val bitmap=Bitmap.createBitmap(4,4,Bitmap.Config.ARGB_8888)
+        output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG,90,it) }
+        bitmap.recycle()
+        val restored=WorkerCapture(app,SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) }))
+        try {
+            assertEquals("buddy-B",restored.subject)
+            assertEquals(output,restored.file)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { restored.finish(false) }
+            val until=SystemClock.elapsedRealtime()+5000
+            while (restored.result==null && SystemClock.elapsedRealtime()<until) SystemClock.sleep(25)
+            val result=checkNotNull(restored.result)
+            assertEquals("session:site",result.scope)
+            assertEquals("buddy-B",result.subject)
+            assertEquals(output.path,result.path)
+            assertTrue(output.length()>0)
+        } finally { output.delete() }
     }
 
     @Test fun mismatchReturnsToPeerCheckWithoutAPhoto() {

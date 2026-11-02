@@ -92,7 +92,7 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
                     DetailRow("움직임 센서", "직접 감시를 켠 작업 시간")
                     DetailRow("위치 · 선택", "출근 확인과 긴급 상황")
                     DetailRow("카메라 · 선택", "동료 보호구와 위험 요소 촬영")
-                    SLButton("권한 허용하고 시작", { actions.onboardingPermissions(controller::finishOnboarding) })
+                    SLButton("권한 허용하고 시작", actions.onboardingPermissions)
                     SLButton("나중에 할게요", controller::finishOnboarding, secondary = true)
                 }
             }
