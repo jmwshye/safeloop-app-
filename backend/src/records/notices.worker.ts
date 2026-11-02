@@ -151,7 +151,7 @@ export class NoticesWorker
           ),
         );
       if (!review) return 'cancelled';
-    } else if (item.kind === 'high_risk') {
+    } else if (item.kind === 'high_risk' || item.kind === 'high_risk_end') {
       const [shift] = await db
         .select({ id: attendances.id })
         .from(attendances)
@@ -161,7 +161,9 @@ export class NoticesWorker
             eq(attendances.siteId, item.siteId),
             eq(attendances.buddyUserId, item.recipientId),
             isNull(attendances.checkedOutAt),
-            sql`${attendances.workDate}=(now() AT TIME ZONE 'Asia/Seoul')::date`,
+            item.kind === 'high_risk'
+              ? sql`${attendances.highRiskTask} IS NOT NULL`
+              : isNull(attendances.highRiskTask),
           ),
         );
       if (!shift) return 'cancelled';
@@ -193,6 +195,7 @@ export class NoticesWorker
       devices.map((d) => d.token),
       {
         eventId: item.id,
+        recipientId: item.recipientId,
         type: item.kind,
         siteId: item.siteId,
         entityId: item.entityId,

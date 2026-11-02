@@ -11,6 +11,8 @@ export const createIncidentSchema = z.strictObject({
       accuracyMeters: z.number().min(0).max(100000),
     })
     .optional(),
+  detectedAt: z.iso.datetime({ offset: true }).optional(),
+  attendanceId: z.uuid().optional(),
   peakG: z.number().nonnegative().max(1000).optional(),
   sensorWindow: z
     .array(
@@ -29,6 +31,7 @@ export const workerReplySchema = z.strictObject({
 export type WorkerReplyInput = z.infer<typeof workerReplySchema>;
 export const receiptSchema = z.strictObject({
   stage: z.enum(['received', 'opened']),
+  occurredAt: z.iso.datetime({ offset: true }).optional(),
 });
 export const observeSchema = z.strictObject({
   condition: z.enum(['unconscious', 'immobile', 'conscious', 'appears_safe']),
@@ -41,7 +44,10 @@ export const resolutionSchema = z.strictObject({
   ]),
   photoId: z.uuid().optional(),
 });
-export const dialSchema = z.strictObject({ requestId: z.uuid() });
+export const dialSchema = z.strictObject({
+  requestId: z.uuid(),
+  openedAt: z.iso.datetime({ offset: true }).optional(),
+});
 export const emptySchema = z.strictObject({}).default({});
 export type CreateIncidentInput = z.infer<typeof createIncidentSchema>;
 export type ResolutionInput = z.infer<typeof resolutionSchema>;

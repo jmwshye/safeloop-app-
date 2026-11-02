@@ -77,6 +77,7 @@
 | 요청 필드 | 입력 조건 |
 | --- | --- |
 | `name` | **필수** · 현장 이름 |
+| `requestId` | 생성 폼 제출용 UUID. 응답을 못 받으면 같은 값으로 재전송해 같은 현장·코드 조회 |
 | `center` | 선택 · 현장 중심 좌표. `latitude`와 `longitude`를 함께 전송 |
 | `foremanPhone` | 선택 · 반장 전화번호 |
 | `breakReturnTime` · `shiftChangeTime` | 선택 · 휴식 복귀·교대 시각. 한국 시간 `HH:mm` |
@@ -103,7 +104,8 @@
 
 - **권한** 현장 반장
 - **요청** 생성 때와 같은 본문으로 설정 전체 교체. 생략한 선택값은 초기화
-- **좌표 유지** `center` 조회 API 없음. 전화번호만 변경해도 유지할 좌표를 함께 전송
+- **좌표 유지** `GET /sites/mine`의 `center`를 함께 전송
+- **교대·휴식 시간 변경** 근무 중인 작업자의 발송 전 예약에 적용. 이미 도래했거나 발송한 알림은 이력에 유지
 - **응답** 변경된 `site`.
 
 ## 출퇴근·안전점검
@@ -114,13 +116,13 @@
 
 | `200` 응답 | 의미 |
 | --- | --- |
-| `{"attendance":null}` | 오늘 출근 기록 없음 |
+| `{"attendance":null}` | 오늘 출근과 이전 미퇴근 기록이 모두 없음 |
 | `attendance`가 있고 `safetyCheck`가 `null` | 출근 완료, 점검 전 |
 | `attendance.safetyCheck`에 값이 있음 | 출근·점검 모두 저장됨 |
 
 **출근 저장** · `POST /attendances`
 
-**출근 조건** · 하루 한 현장. GPS 권한 거절 시에도 출근 가능
+**출근 조건** · 하루 한 현장. 자정을 넘긴 미퇴근 기록은 먼저 퇴근 처리. GPS 권한 거절 시에도 출근 가능
 
 | 요청 필드 | 입력 조건 |
 | --- | --- |
@@ -277,6 +279,7 @@
 | 선택 필드 | 보낼 값 |
 | --- | --- |
 | `location` | 사건 당시 `latitude`, `longitude`, `accuracyMeters`. 출근용 `capturedAt`은 제외 |
+| `detectedAt` · `attendanceId` | 충격을 감지한 원래 시각(ISO 8601)과 당시 출근 ID. 오프라인 재시도 시 같은 값 사용 |
 | `peakG` | 최대 가속도(g) |
 | `sensorWindow` | 충격 전후 15초의 `offsetMs`·`accelerationG` 표본, 최대 300개 |
 
@@ -314,7 +317,7 @@
 
 **초대받은 동료·반장** · 사건 변경 응답은 모두 `incident`.
 
-- 수신·열람 · `PUT /incidents/{id}/receipt`. 기기가 받으면 `{"stage":"received"}`, 사용자가 열면 `{"stage":"opened"}` 전송.
+- 수신·열람 · `PUT /incidents/{id}/receipt`. 기기가 받으면 `{"stage":"received"}`, 사용자가 열면 `{"stage":"opened"}` 전송. 늦게 동기화할 때는 원래 시각 `occurredAt`도 전달.
 - 수락 · `PUT /incidents/{id}/accept`에 `{}`. 수락자 1명만 허용. `409`면 사건 상세 재조회.
 - 거절 · `PUT /incidents/{id}/decline`에 `{}`.
 
@@ -338,12 +341,12 @@
 
 **재호출** · `PUT /incidents/{id}/retry`
 
-`unanswered`일 때 당사자나 현장 반장이 `{}` 전송.
+`unanswered`일 때 당사자나 현장 반장이 `{}` 전송. `409 NO_RESPONDER_AVAILABLE`이면 직접 연락 안내.
 
 **119 전화 기록**
 
 - **앱** · 오프라인에서도 `ACTION_DIAL`로 `tel:119` 먼저 열기
-- **서버 기록** · 전화 화면을 연 시각
+- **서버 기록** · 두 경로 모두 `openedAt`에 전화 화면을 연 원래 시각을 전송. 사건 종료 전에 연 기록은 종료 후에도 동기화 가능
 - 진행 중 사건 안에서 · `PUT /incidents/{id}/dial-intent`에 `requestId` → `incident`.
 - 사건 밖에서 · `POST /sites/{siteId}/dial-intents`에 `requestId` → `200`, `id`와 `openedAt`.
 
@@ -433,14 +436,14 @@
 
 **점검 요청 확인** · `PUT /sites/{siteId}/safety-requests/{id}/acknowledgement`
 
-- **요청** `{id}`는 목록의 `attendanceId`. 본문 `{}`.
+- **요청** `{id}`는 목록의 `attendanceId`. `expectedRequestedAt`에 화면에 표시한 요청의 `requestedAt` 전송. `409 SAFETY_REVIEW_CHANGED`면 새 항목을 다시 확인.
 - **응답** `request.acknowledgedAt`에 확인 시각 기록. 작업자의 원래 답변은 유지.
 
 ## 푸시·알림
 
 **기기 등록** · `PUT /push-devices/{deviceId}`
 
-- **경로** · `deviceId`는 앱 설치 시 만든 UUID
+- **경로** · `deviceId`는 앱에서 계정별로 보관하는 설치 UUID. 같은 폰에서 다른 계정으로 로그인하면 계정에 맞는 ID 사용
 - **요청** 로그인 또는 FCM 토큰 변경 시 `fcmToken`에 기기가 받은 새 토큰 전송
 - **응답** `device.id`.
 
@@ -463,14 +466,14 @@
 
 **FCM 수신 시 처리**
 
-- **긴급 푸시** · 데이터(`type`, `eventId`, `siteId`, `incidentId`)만 수신
-- **현장 푸시** · 표시용 알림 + 데이터(`type`, `eventId`, `siteId`, `entityId`) 수신
+- **공통 데이터** · `type`, `eventId`, `siteId`, `recipientId`. 앱은 현재 계정·현장과 일치할 때 알림 표시
+- **이동할 기록** · 긴급 푸시는 `incidentId`, 현장 푸시는 `entityId`
 
 | 메시지 `type` | 앱 동작 |
 | --- | --- |
 | `incident_alert` | 잠금 화면 알림 표시. 단말 수신·사용자 열람은 각각 서버에 기록. 같은 `eventId`는 기존 알림 갱신 |
 | `incident_observation`, `incident_worker_safe`, `incident_closed`, `incident_verification_overdue` | `incidentId`로 사건 상세 갱신 |
-| `work_prompt` / `high_risk` | 내 근무 상태 / 동료 작업 상태 갱신 |
+| `work_prompt` / `high_risk` / `high_risk_end` | 내 근무 확인 / 동료 고위험 작업 시작 / 종료 |
 | `safety_review` / `risk_action` | 반장 점검 요청 목록 / 위험 신고 상세 갱신 |
 
 ## 사진
@@ -509,6 +512,7 @@
 | `details.photoId` | 동료 점검에 첨부한 사진 ID |
 | `incident.worker_unanswered` / `incident.response_delayed` | 본인 확인 시간 만료 / 대응자 수락 시간 만료 |
 | `incident.accepted` | `details.role`은 수락자 역할, `details.responseSeconds`는 해당 수락자 호출부터 수락까지 걸린 초 |
+| `incident.responder_unavailable` | 수락자가 대응할 수 없어 다른 동료에게 다시 요청 |
 | `incident.verification_overdue` | 수락 후 120초간 현장 상태 미확인으로 반장에게 확인 요청 |
 
 **원본 검사** · `GET /sites/{siteId}/timeline/verify`

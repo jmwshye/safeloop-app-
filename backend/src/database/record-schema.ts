@@ -55,6 +55,7 @@ export const auditHeads = pgTable('audit_heads', {
 export const noticeKinds = [
   'safety_review',
   'high_risk',
+  'high_risk_end',
   'work_prompt',
   'risk_action',
 ] as const;

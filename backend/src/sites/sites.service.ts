@@ -1,10 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
-import { and, asc, eq, or } from 'drizzle-orm';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
+import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../database.service.js';
 import { siteMemberships, sites, users } from '../database/schema.js';
 import { requireSiteForeman, requireSiteMember } from './site-access.js';
-import type { SiteSetup, WorkProfile } from './sites.schemas.js';
+import { lockSite, reschedulePrompts } from '../attendance/shift-operations.js';
+import type { SiteCreation, SiteSetup, WorkProfile } from './sites.schemas.js';
 
 function siteByCode(
   db: Pick<DatabaseService['db'], 'select'>,
@@ -23,14 +28,39 @@ function siteByCode(
 export class SitesService {
   constructor(private readonly database: DatabaseService) {}
 
-  async create(userId: string, input: SiteSetup) {
+  async create(userId: string, input: SiteCreation) {
     return this.database.db.transaction(async (tx) => {
+      const settings = siteSettings(input);
+      const fingerprint = createHash('sha256')
+        .update(JSON.stringify(settings))
+        .digest('hex');
+      if (input.requestId) {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId + ':' + input.requestId.toLowerCase()}::text, 1))`,
+        );
+        const [prior] = await tx
+          .select()
+          .from(sites)
+          .where(
+            and(
+              eq(sites.foremanUserId, userId),
+              eq(sites.creationRequestId, input.requestId),
+            ),
+          );
+        if (prior) {
+          if (prior.creationFingerprint !== fingerprint)
+            throw new ConflictException('같은 요청의 현장 설정이 달라요.');
+          return { site: { id: prior.id, name: prior.name, code: prior.code } };
+        }
+      }
       let site;
       while (!site) {
         [site] = await tx
           .insert(sites)
           .values({
-            ...siteSettings(input),
+            ...settings,
+            creationRequestId: input.requestId,
+            creationFingerprint: input.requestId ? fingerprint : null,
             foremanUserId: userId,
             code: randomBytes(6).toString('hex').toUpperCase(),
           })
@@ -43,14 +73,25 @@ export class SitesService {
   }
 
   async configure(userId: string, siteId: string, input: SiteSetup) {
-    await requireSiteForeman(this.database.db, siteId, userId);
-    const [site] = await this.database.db
-      .update(sites)
-      .set(siteSettings(input))
-      .where(and(eq(sites.id, siteId), eq(sites.foremanUserId, userId)))
-      .returning();
-    if (!site) throw new NotFoundException();
-    return { site };
+    return this.database.db.transaction(async (tx) => {
+      await requireSiteForeman(tx, siteId, userId);
+      const previous = await lockSite(tx, siteId);
+      const settings = siteSettings(input);
+      const [site] = await tx
+        .update(sites)
+        .set(settings)
+        .where(eq(sites.id, previous.id))
+        .returning();
+      await reschedulePrompts(tx, previous, site);
+      return {
+        site: {
+          id: site.id,
+          code: site.code,
+          foremanUserId: site.foremanUserId,
+          ...settings,
+        },
+      };
+    });
   }
 
   async mine(userId: string) {

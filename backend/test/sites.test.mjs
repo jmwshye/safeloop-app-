@@ -222,6 +222,107 @@ test(
       },
     );
 
+    await t.test(
+      '현장 생성 응답 유실과 동시 재전송은 같은 현장·코드 반환',
+      async () => {
+        const body = { name: '재전송 현장', requestId: randomUUID() };
+        const results = await Promise.all([
+          post('/sites', body, southForeman.token),
+          post('/sites', body, southForeman.token),
+        ]);
+        assert.deepEqual(results[0], results[1]);
+        assert.equal(results[0].status, 201);
+        const id = results[0].body.site.id;
+        siteIds.push(id);
+        assert.equal(
+          (
+            await put(
+              '/sites/' + id + '/settings',
+              { name: '수정 후' },
+              southForeman.token,
+            )
+          ).status,
+          200,
+        );
+        assert.equal(
+          (await post('/sites', body, southForeman.token)).body.site.id,
+          id,
+        );
+        assert.equal(
+          (
+            await post(
+              '/sites',
+              { ...body, name: '다른 요청' },
+              southForeman.token,
+            )
+          ).status,
+          409,
+        );
+        for (let i = 0; i < 63; i++) {
+          const token = i % 2 ? first.token : second.token;
+          assert.equal((await get('/auth/me', token)).status, 200);
+          assert.equal((await get('/sites/mine', token)).status, 200);
+        }
+      },
+    );
+    await t.test(
+      '휴식·교대 변경은 아직 발송하지 않은 예약에만 반영',
+      async () => {
+        const created = await post(
+          '/sites',
+          { name: '예약 검사' },
+          southForeman.token,
+        );
+        const id = created.body.site.id;
+        siteIds.push(id);
+        const shift = (
+          await db.query(
+            "insert into attendances(site_id,user_id,work_date,checked_in_at) values ($1,$2,(now() at time zone 'Asia/Seoul')::date+1,now()) returning id",
+            [id, southForeman.user.id],
+          )
+        ).rows[0].id;
+        const edit = async (breakReturnTime, shiftChangeTime) =>
+          assert.equal(
+            (
+              await put(
+                '/sites/' + id + '/settings',
+                { name: '예약 검사', breakReturnTime, shiftChangeTime },
+                southForeman.token,
+              )
+            ).status,
+            200,
+          );
+        const rows = async () =>
+          (
+            await db.query(
+              "select p.id,kind,to_char(due_at at time zone 'Asia/Seoul','HH24:MI') as at from work_prompts p where attendance_id=$1 order by kind",
+              [shift],
+            )
+          ).rows;
+        await edit('09:00', '12:00');
+        const [rest, change] = await rows();
+        await db.query(
+          "update site_notices set status='sent',attempts=1 where entity_id=$1",
+          [change.id],
+        );
+        await edit('10:30', '14:00');
+        const [newRest, sent] = await rows();
+        assert.equal(newRest.at, '10:30');
+        assert.equal(sent.id, change.id);
+        assert.equal(sent.at, '12:00');
+        assert.equal(
+          (
+            await db.query('select id from site_notices where entity_id=$1', [
+              rest.id,
+            ])
+          ).rowCount,
+          0,
+        );
+        await edit(null, '14:00');
+        assert.deepEqual(await rows(), [sent]);
+      },
+    );
+
     const sitePath = `/sites/${north.id}`;
     const profile = { occupation: '철근', zone: '2층', expectedWage: 150000 };
     let firstShift;
@@ -419,9 +520,31 @@ test(
         assert.equal(pending.body.requests[0].fallHazard, 'unknown');
         const ack =
           sitePath + `/safety-requests/${firstShift.id}/acknowledgement`;
-        const firstAck = await put(ack, {}, northForeman.token);
+        const expected = {
+          expectedRequestedAt: pending.body.requests[0].requestedAt,
+        };
+        assert.equal((await put(ack, {}, northForeman.token)).status, 400);
+        const changed = {
+          ...input,
+          fallHazard: 'confirmed',
+          protectiveEquipment: 'unknown',
+        };
+        assert.equal((await put(path, changed, first.token)).status, 200);
+        assert.equal(
+          (await put(ack, expected, northForeman.token)).status,
+          409,
+        );
+        const revised = (
+          await get(sitePath + '/safety-requests', northForeman.token)
+        ).body.requests[0];
+        assert.equal(revised.acknowledgedAt, null);
+        expected.expectedRequestedAt = revised.requestedAt;
+        const firstAck = await put(ack, expected, northForeman.token);
         assert.equal(firstAck.status, 200);
-        assert.deepEqual(await put(ack, {}, northForeman.token), firstAck);
+        assert.deepEqual(
+          await put(ack, expected, northForeman.token),
+          firstAck,
+        );
         assert.equal(
           (await put(path, { ...input, fallHazard: 'confirmed' }, first.token))
             .status,
@@ -438,7 +561,7 @@ test(
         );
         assert.deepEqual(
           events.rows.map((r) => r.answer),
-          ['unknown', 'confirmed'],
+          ['unknown', 'confirmed', 'confirmed'],
         );
         assert.equal(
           (
@@ -447,7 +570,7 @@ test(
               [firstShift.id],
             )
           ).rows[0].n,
-          1,
+          2,
         );
       },
     );

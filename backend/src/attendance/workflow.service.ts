@@ -42,12 +42,8 @@ function promptState(
   return now < p.dueAt ? 'scheduled' : 'pending';
 }
 
-function ensureActive(record: typeof attendances.$inferSelect, now: Date) {
-  if (
-    !record.siteId ||
-    record.checkedOutAt ||
-    record.workDate !== workDateAt(now)
-  ) {
+function ensureActive(record: typeof attendances.$inferSelect) {
+  if (!record.siteId || record.checkedOutAt) {
     conflict('SHIFT_NOT_ACTIVE', '오늘 근무 중인 기록에서만 처리할 수 있어요.');
   }
   return record.siteId;
@@ -69,7 +65,7 @@ export class WorkflowService {
         .for('no key update');
       if (!shift) throw new NotFoundException();
       const now = new Date();
-      ensureActive(shift, now);
+      ensureActive(shift);
       const observedAt = new Date(input.observedAt);
       const [prior] = await tx
         .select()
@@ -100,7 +96,7 @@ export class WorkflowService {
     if (!own) throw new NotFoundException();
     const { shift } = own;
     const now = new Date();
-    const active = !shift.checkedOutAt && shift.workDate === workDateAt(now);
+    const active = !shift.checkedOutAt;
     const prompts = await db
       .select()
       .from(workPrompts)
@@ -186,7 +182,7 @@ export class WorkflowService {
       if (!target || target.buddyUserId !== userId || target.userId === userId)
         throw new NotFoundException();
       const now = new Date();
-      const siteId = ensureActive(target, now);
+      const siteId = ensureActive(target);
       const [previous] = await tx
         .select()
         .from(peerChecks)
@@ -245,7 +241,7 @@ export class WorkflowService {
         .for('no key update');
       if (!record) throw new NotFoundException();
       const now = new Date();
-      const siteId = ensureActive(record, now);
+      const siteId = ensureActive(record);
       const highRiskStartedAt = task ? (record.highRiskStartedAt ?? now) : null;
       if (record.highRiskTask !== task) {
         if (record.highRiskTask && task)
@@ -277,7 +273,7 @@ export class WorkflowService {
           await enqueueNotice(tx, {
             siteId,
             recipientId: record.buddyUserId,
-            kind: 'high_risk',
+            kind: task ? 'high_risk' : 'high_risk_end',
             entityId: id,
             uniqueKey: `high-risk:${event.id}:${record.buddyUserId}`,
           });
@@ -309,7 +305,7 @@ export class WorkflowService {
       const { prompt, shift } = row;
       if (prompt.response === answer) return { prompt };
       const now = new Date();
-      const siteId = ensureActive(shift, now);
+      const siteId = ensureActive(shift);
       if (promptState(prompt, now, shift.checkedOutAt) !== 'pending')
         conflict('CHECK_IN_NOT_PENDING', '지금 응답할 확인 요청이 없어요.');
       if (answer === 'help_needed')
@@ -351,11 +347,7 @@ export class WorkflowService {
         .select()
         .from(attendances)
         .where(
-          and(
-            eq(attendances.siteId, siteId),
-            eq(attendances.workDate, workDateAt(new Date())),
-            isNull(attendances.checkedOutAt),
-          ),
+          and(eq(attendances.siteId, siteId), isNull(attendances.checkedOutAt)),
         );
       const first = active.find((r) => r.userId === worker);
       const second = active.find((r) => r.userId === buddy);
@@ -432,7 +424,7 @@ export class WorkflowService {
         and(
           eq(attendances.userId, users.id),
           eq(attendances.siteId, siteId),
-          eq(attendances.workDate, day),
+          or(eq(attendances.workDate, day), isNull(attendances.checkedOutAt)),
         ),
       )
       .leftJoin(
@@ -457,7 +449,7 @@ export class WorkflowService {
       .where(
         and(
           eq(attendances.siteId, siteId),
-          eq(attendances.workDate, day),
+          or(eq(attendances.workDate, day), isNull(attendances.checkedOutAt)),
           lte(workPrompts.dueAt, now),
         ),
       )
@@ -539,9 +531,20 @@ export class WorkflowService {
     };
   }
 
-  async acknowledge(siteId: string, userId: string, id: string) {
+  async acknowledge(
+    siteId: string,
+    userId: string,
+    id: string,
+    expectedRequestedAt: Date,
+  ) {
     return this.database.db.transaction(async (tx) => {
       await requireSiteForeman(tx, siteId, userId);
+      // Take the same first lock as a worker editing this checklist.
+      await tx
+        .select({ id: attendances.id })
+        .from(attendances)
+        .where(and(eq(attendances.id, id), eq(attendances.siteId, siteId)))
+        .for('no key update');
       const [row] = await tx
         .select({ review: safetyReviews, worker: attendances.userId })
         .from(safetyReviews)
@@ -555,6 +558,11 @@ export class WorkflowService {
         )
         .for('no key update');
       if (!row) throw new NotFoundException();
+      if (row.review.requestedAt.valueOf() !== expectedRequestedAt.valueOf())
+        conflict(
+          'SAFETY_REVIEW_CHANGED',
+          '점검 내용이 바뀌었어요. 새 항목을 확인해 주세요.',
+        );
       if (row.review.acknowledgedAt) return { request: row.review };
       const [request] = await tx
         .update(safetyReviews)

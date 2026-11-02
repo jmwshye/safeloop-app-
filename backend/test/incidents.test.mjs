@@ -13,7 +13,7 @@ import { IncidentWorker } from '../dist/incidents/incident.worker.js';
 import { PushSender } from '../dist/notifications/push-sender.js';
 import { pushMessage } from '../dist/notifications/push-message.js';
 
-test('긴급 FCM은 백그라운드 단말 콜백용 데이터 메시지, 현장 일반 알림은 알림 트레이용', () => {
+test('긴급·현장 FCM 모두 계정 확인 뒤 단말에서 표시할 데이터 메시지', () => {
   const tokens = ['local-test-device'];
   const data = {
     siteId: randomUUID(),
@@ -32,8 +32,8 @@ test('긴급 FCM은 백그라운드 단말 콜백용 데이터 메시지, 현장
     { siteId: data.siteId, eventId: randomUUID(), type: 'site_notice' },
     60000,
   );
-  assert.ok(site.notification);
-  assert.equal(site.android.notification.tag, site.data.eventId);
+  assert.equal(site.notification, undefined);
+  assert.equal(site.android.priority, 'high');
 });
 
 const url = process.env.TEST_DATABASE_URL;
@@ -308,6 +308,9 @@ test(
           assert.equal(job.ttl, 30000);
           assert.deepEqual(job.payload, {
             eventId: job.payload.eventId,
+            recipientId: job.tokens.includes('test-' + buddy.id)
+              ? buddy.id
+              : manager.id,
             siteId,
             incidentId: caseId,
             type: 'incident_alert',
@@ -560,7 +563,7 @@ test(
         );
         assert.deepEqual(
           attempts.map((job) => job.ttl),
-          [30000, 28000, 24000],
+          [30000, 30000, 30000],
         );
         assert.equal((await recipient(manager)).receivedAt, null);
         assert.equal((await recipient(manager)).sentAt, null);
@@ -696,6 +699,134 @@ test(
         assert.equal(dial.dialIntents.length, 1);
         assert.equal(dial.status, 'unanswered');
         await confirmAtSite(manager);
+      },
+    );
+    await t.test(
+      '오프라인 충격 시각·119 복원, 만료 이후에도 유효한 호출 발송, 반대 응답 후 안전 알림 취소',
+      async () => {
+        const detectedAt = new Date(clock - 130000).toISOString();
+        const call = await start({ ...startBody(), detectedAt });
+        caseId = call.id;
+        assert.equal(call.createdAt, detectedAt);
+        assert.equal(call.status, 'calling');
+        assert.equal(call.location, null);
+        clock += 31000;
+        await ok(worker, path('/worker-response'), 'PUT', {
+          requestId: randomUUID(),
+          response: 'okay',
+        });
+        await ok(worker, path('/worker-response'), 'PUT', {
+          requestId: randomUUID(),
+          response: 'help_needed',
+        });
+        // The production dispatcher consumes at most eight jobs per tick.
+        while (
+          (
+            await db.query(
+              "select 1 from incident_pushes where status='queued' and next_attempt_at <= $1 limit 1",
+              [new Date(clock)],
+            )
+          ).rowCount
+        ) {
+          await service.dispatchPending();
+        }
+        const notices = (await ok(worker, path(''))).incident;
+        assert.ok(notices.recipients.some((r) => r.delivery === 'sent'));
+        assert.ok(
+          notices.notices
+            .filter((n) => n.type === 'worker_safe')
+            .every((n) => n.status === 'cancelled'),
+        );
+        const openedAt = new Date(clock).toISOString();
+        clock += 1000;
+        await confirmAtSite(manager);
+        clock += 30000;
+        const late = await ok(worker, path('/dial-intent'), 'PUT', {
+          requestId: randomUUID(),
+          openedAt,
+        });
+        assert.equal(late.incident.dialIntents[0].openedAt, openedAt);
+        assert.equal(
+          (
+            await req(worker, path('/dial-intent'), 'PUT', {
+              requestId: randomUUID(),
+              openedAt: new Date(clock).toISOString(),
+            })
+          ).status,
+          409,
+        );
+      },
+    );
+    await t.test(
+      '수락 동료 퇴근 또는 직접 구조 요청 시 반장이 원 사건을 이어받음',
+      async () => {
+        for (const why of ['checkout', 'distress']) {
+          const original = await start({
+            siteId,
+            source: 'manual_help',
+            requestId: randomUUID(),
+          });
+          caseId = original.id;
+          await ok(buddy, path('/accept'), 'PUT', {});
+          let second;
+          if (why === 'checkout')
+            await db.query(
+              'UPDATE attendances SET checked_out_at=$3 WHERE site_id=$1 AND user_id=$2',
+              [siteId, buddy.id, new Date(clock)],
+            );
+          else
+            second = (
+              await ok(buddy, '/incidents', 'POST', {
+                siteId,
+                source: 'manual_help',
+                requestId: randomUUID(),
+              })
+            ).incident;
+          await service.processDue();
+          const active = (await ok(manager, path(''))).incident;
+          assert.equal(active.responderId, null);
+          assert.ok(
+            active.recipients.find((r) => r.userId === buddy.id)?.declinedAt,
+          );
+          await confirmAtSite(manager);
+          if (second) {
+            caseId = second.id;
+            await confirmAtSite(manager);
+          }
+          await db.query(
+            'UPDATE attendances SET checked_out_at=NULL WHERE site_id=$1 AND user_id=$2',
+            [siteId, buddy.id],
+          );
+        }
+      },
+    );
+    await t.test(
+      '공용 단말 계정·토큰이 함께 바뀌어도 계정별 기기 등록과 도용 거부',
+      async () => {
+        const deviceA = randomUUID(),
+          deviceB = randomUUID();
+        await ok(worker, '/push-devices/' + deviceA, 'PUT', {
+          fcmToken: 'offline-A-' + deviceA,
+        });
+        assert.equal(
+          (
+            await req(zone, '/push-devices/' + deviceA, 'PUT', {
+              fcmToken: 'rotated-B-' + deviceB,
+            })
+          ).status,
+          409,
+        );
+        await ok(zone, '/push-devices/' + deviceB, 'PUT', {
+          fcmToken: 'rotated-B-' + deviceB,
+        });
+        await ok(worker, '/push-devices/' + deviceB, 'DELETE');
+        const { rows } = await db.query(
+          'select user_id, fcm_token from push_devices where id=$1',
+          [deviceB],
+        );
+        assert.deepEqual(rows, [
+          { user_id: zone.id, fcm_token: 'rotated-B-' + deviceB },
+        ]);
       },
     );
   },

@@ -1,6 +1,11 @@
 import { HttpException } from '@nestjs/common';
 
 const errors = {
+  NO_RESPONDER_AVAILABLE: [
+    409,
+    '지금 응답할 동료가 없어요. 반장이나 119에 직접 연락해 주세요.',
+  ],
+  INVALID_EVENT_TIME: [400, '기기에서 기록한 시각을 확인해 주세요.'],
   SHIFT_REQUIRED: [409, '출근 중인 현장을 확인해 주세요.'],
   SITE_NOT_FOUND: [404, '현장을 찾을 수 없어요.'],
   REQUEST_ID_CONFLICT: [409, '같은 요청 ID에 다른 내용을 보낼 수 없어요.'],

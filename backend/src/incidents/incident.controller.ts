@@ -49,7 +49,7 @@ export class SiteDialController {
     return this.incidents.siteDial(
       idValue(siteId),
       req.user.id,
-      input(dialSchema, body).requestId,
+      input(dialSchema, body),
     );
   }
 }
@@ -113,7 +113,7 @@ export class IncidentController {
     return this.incidents.receipt(
       req.user.id,
       idValue(id),
-      input(receiptSchema, body).stage,
+      input(receiptSchema, body),
     );
   }
   @Put(':id/accept')
@@ -169,7 +169,7 @@ export class IncidentController {
     return this.incidents.dial(
       req.user.id,
       idValue(id),
-      input(dialSchema, body).requestId,
+      input(dialSchema, body),
     );
   }
   @Put(':id/resolution')

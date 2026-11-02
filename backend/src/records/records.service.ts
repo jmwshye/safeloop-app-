@@ -4,7 +4,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, gt, gte, lt, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  getTableColumns,
+  lt,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { DatabaseService } from '../database.service.js';
 import {
   auditEvents,
@@ -58,7 +69,12 @@ export class RecordsService {
       ? new Date(query.day + 'T00:00:00+09:00')
       : undefined;
     const items = await this.database.db
-      .select()
+      .select({
+        ...getTableColumns(auditEvents),
+        canRequestCorrection: sql<boolean>`coalesce(
+          ${auditEvents.actorId} = ${userId} OR ${auditEvents.subjectId} = ${userId}
+          OR (${auditEvents.type} = 'risk.reported' AND ${personalEvent(userId)}), false)`,
+      })
       .from(auditEvents)
       .where(
         and(

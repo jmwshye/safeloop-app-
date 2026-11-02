@@ -18,6 +18,10 @@ export const setupSchema = z.strictObject({
   breakReturnTime: localTime.nullish(),
   shiftChangeTime: localTime.nullish(),
 });
+export const createSiteSchema = setupSchema.extend({
+  requestId: z.uuid().optional(),
+});
+export type SiteCreation = z.infer<typeof createSiteSchema>;
 export const profileSchema = z.strictObject({
   occupation: z.string().trim().min(1).max(80),
   zone: z.string().trim().min(1).max(80),

@@ -205,13 +205,18 @@ test(
     await t.test(
       '익명 신고의 작성자만 자기 타임라인에서 원본과 정정을 확인',
       async () => {
-        const response = await call(worker, 'POST', path + '/risks', {
-          requestId: randomUUID(),
-          title: '바닥 개구부',
-          zone: '2층',
-          category: 'fall',
-          anonymous: true,
-        });
+        const response = await call(
+          worker,
+          'POST',
+          path.replace(/([0-9a-f-]{36})$/, (id) => id.toUpperCase()) + '/risks',
+          {
+            requestId: randomUUID(),
+            title: '바닥 개구부',
+            zone: '2층',
+            category: 'fall',
+            anonymous: true,
+          },
+        );
         assert.equal(response.status, 201);
         const id = response.data.risk.id;
         const eventsFor = async (who, scope) =>
@@ -220,6 +225,15 @@ test(
           ).data.events.filter((e) => e.entityId === id);
         const [original] = await eventsFor(worker, 'self');
         assert.equal(original.actorId, null);
+        assert.equal(original.canRequestCorrection, true);
+        assert.equal(
+          (await eventsFor(boss, 'site'))[0].canRequestCorrection,
+          false,
+        );
+        assert.equal(
+          (await call(boss, 'GET', path + '/timeline/verify')).data.valid,
+          true,
+        );
         assert.equal(original.subjectId, null);
         assert.deepEqual(await eventsFor(peer, 'self'), []);
         const route = path + '/timeline/' + original.id + '/corrections';

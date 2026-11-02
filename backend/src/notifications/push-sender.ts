@@ -59,6 +59,7 @@ export class PushSender implements BeforeApplicationShutdown {
         expiresAt: Date.now() + ttlMs,
         data: {
           eventId: data.eventId,
+          recipientId: data.recipientId,
           type: data.type,
           ...(data.incidentId && { incidentId: data.incidentId }),
           ...(data.siteId && { siteId: data.siteId }),

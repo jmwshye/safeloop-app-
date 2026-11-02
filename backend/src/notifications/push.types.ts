@@ -1,5 +1,6 @@
 export type PushData = {
   eventId: string;
+  recipientId: string;
   type: string;
   incidentId?: string;
   siteId?: string;

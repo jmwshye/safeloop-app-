@@ -86,23 +86,25 @@ export function eventHash(event: Evidence) {
 }
 
 export async function appendEvent(tx: Tx, input: EventInput) {
+  // PostgreSQL canonicalizes UUIDs; hash and lock the same representation that is persisted.
+  const siteId = input.siteId.toLowerCase();
   // Lock even when the chain is empty. Domain write and evidence must commit together.
   await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.siteId}::text, 0))`,
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${siteId}::text, 0))`,
   );
   const [last] = await tx
     .select()
     .from(auditHeads)
-    .where(eq(auditHeads.siteId, input.siteId));
+    .where(eq(auditHeads.siteId, siteId));
   const event: Evidence = {
     id: randomUUID(),
-    siteId: input.siteId,
+    siteId,
     type: input.type,
     source: input.source,
-    actorId: input.actorId ?? null,
-    subjectId: input.subjectId ?? null,
-    entityId: input.entityId,
-    correctsId: input.correctsId ?? null,
+    actorId: input.actorId?.toLowerCase() ?? null,
+    subjectId: input.subjectId?.toLowerCase() ?? null,
+    entityId: input.entityId.toLowerCase(),
+    correctsId: input.correctsId?.toLowerCase() ?? null,
     details: JSON.parse(JSON.stringify(input.details ?? {})) as Record<
       string,
       unknown

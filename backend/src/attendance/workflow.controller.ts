@@ -16,7 +16,6 @@ import {
   attendanceIdSchema,
   checkPeerSchema,
   deviceSchema,
-  emptySchema,
   highRiskSchema,
   locationSchema,
   pairSchema,
@@ -128,7 +127,15 @@ export class SiteTeamController {
     @Param('id') value: string,
     @Body() body: unknown,
   ) {
-    inputFor(emptySchema, body);
-    return this.work.acknowledge(id(site), r.user.id, id(value));
+    const { expectedRequestedAt } = inputFor(
+      z.strictObject({ expectedRequestedAt: z.iso.datetime({ offset: true }) }),
+      body,
+    );
+    return this.work.acknowledge(
+      id(site),
+      r.user.id,
+      id(value),
+      new Date(expectedRequestedAt),
+    );
   }
 }
