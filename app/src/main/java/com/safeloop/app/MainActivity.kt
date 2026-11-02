@@ -64,6 +64,7 @@ class MainActivity:ComponentActivity(){
   WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=true;isAppearanceLightNavigationBars=true}
   controller=ViewModelProvider(this)[WorkerController::class.java]
   captures=ViewModelProvider(this)[WorkerCapture::class.java]
+  SafetySpeech.prepare(this)
   setupScope=savedInstanceState?.getString("setupScope")
   notificationScope=savedInstanceState?.getString("notificationScope")
   notificationAction=NotificationAction.entries.find{it.name==savedInstanceState?.getString("notificationAction")}
@@ -82,18 +83,22 @@ class MainActivity:ComponentActivity(){
     }
    }
    androidx.compose.runtime.LaunchedEffect(captures.failure){captures.failure?.let{controller.feedback=it}}
+   androidx.compose.runtime.LaunchedEffect(captures.notice){captures.notice?.let{controller.feedback=it}}
    WorkerTheme{
     androidx.compose.runtime.key(scope){WorkerApp(controller,WorkerActions(
      dial={dial()},capture=::capture,cameraResult=photo?.takeIf{it.scope==scope},consumeCamera=captures::consume,
      attend={requestLocation(LocationPurpose.CHECK_IN)},monitor={enabled->if(enabled)notifications(NotificationAction.MONITOR)else controller.setMonitoring(false)},
      export=::exportRecords,notificationSettings=::notificationSettings,notifications=::notifications,shareReport=::shareReport,map=::openMap,phone=::callPhone,dialIncident={dial(it)},
      checkLocation={requestLocation(LocationPurpose.CHECK_ONLY)},locate={callback->if(locationRequest==null){responderLocation=callback;requestLocation(LocationPurpose.RESPONDER)}else controller.feedback="위치 확인 중이에요."},
-     onboardingPermissions=::requestSetupPermissions))}}
+     onboardingPermissions=::requestSetupPermissions,record=::recordSituation))}}
   }
  }
  override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);handleIntent(intent)}
  override fun onResume(){super.onResume();if(::controller.isInitialized)controller.refreshMonitoring()}
  private fun handleIntent(intent:Intent){
+  // 긴급 알림으로 열 때만 잠금 화면 위에 띄운다. 평소 기록은 잠금을 풀어야 보인다.
+  val urgent=intent.getBooleanExtra("alert",false)||intent.getBooleanExtra("peerAlert",false)
+  if(Build.VERSION.SDK_INT>=27){setShowWhenLocked(urgent);setTurnScreenOn(urgent)}
   val matches=controller.acceptsNotification(intent.getStringExtra("siteId"),intent.getStringExtra("recipientId"))
   if(intent.getBooleanExtra("dial119",false)){intent.removeExtra("dial119");dial(intent.getStringExtra("callId"),matches);return}
   if(matches)intent.getStringExtra("notificationType")?.let{controller.openNotice(it,intent.getStringExtra("entityId"))}
@@ -115,8 +120,14 @@ class MainActivity:ComponentActivity(){
   else if(!NotificationManagerCompat.from(this).areNotificationsEnabled())controller.feedback="앱 알림이 차단되어 있어요. 내 정보에서 알림을 허용해 주세요."
   else performNotificationAction(action)
  }
+ // 화면이 꺼지면 카메라가 멈추므로 녹화하는 동안만 켜 둔다.
+ private fun recordSituation(callId:String){
+  if(!SituationRecorder.enabled(this)||ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)return
+  window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+  SituationRecorder.start(this,callId){seconds->window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);controller.noteVideo(seconds)}
+ }
  private fun requestSetupPermissions(){
-  val permissions=mutableListOf(Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.CAMERA)
+  val permissions=mutableListOf(Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO)
   if(Build.VERSION.SDK_INT>=33)permissions+=Manifest.permission.POST_NOTIFICATIONS
   setupScope=controller.captureScope;setupPermissions.launch(permissions.toTypedArray())
  }

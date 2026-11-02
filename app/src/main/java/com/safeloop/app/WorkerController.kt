@@ -79,10 +79,18 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   viewModelScope.launch{while(isActive){now=System.currentTimeMillis();if(state.preview){
    val expired=state.calls.filter{it.stage=="self"&&it.status=="pending"&&now>=it.deadline}.map{it.id}
    if(expired.isNotEmpty()){update(state.copy(calls=state.calls.map{if(it.id in expired)it.copy(stage="peer")else it}));event("본인 응답 시간 종료","동료 확인 대기 · 체험 기록",true);notifyPreview("안전 확인이 필요해요","체험: 동료 확인 대기 단계입니다.",expired.first())}
+   if(state.currentShift!=null)tickPrompts()
   };delay(1000)}}
  }
+ private fun tickPrompts(){val next=advancePrompts(state.prompts,now);if(next==state.prompts)return
+  val before=state.prompts.associateBy{it.id};update(state.copy(prompts=next))
+  next.forEach{prompt->val was=before[prompt.id]?.state
+   if(was=="scheduled"&&prompt.state=="pending"){notifyPreview("안전하신가요?","휴식 복귀 때라 한 번만 물어요.",prompt.id,openCall=false);SafetySpeech.say(app,SafetySpeech.CHECK_IN)}
+   if(was=="pending"&&prompt.state=="unverified")event("체크인 응답 없음","안전 미확인",true)
+  }
+ }
  private fun update(next:WorkerState){state=next;if(next.preview)storage.save(next)}
- private fun event(title:String,detail:String,estimate:Boolean=false){check(state.preview);update(state.copy(events=listOf(WorkerEvent(UUID.randomUUID().toString(),title,detail,estimate=estimate))+state.events))}
+ private fun event(title:String,detail:String,estimate:Boolean=false){check(state.preview);val entry=WorkerEvent(UUID.randomUUID().toString(),title,detail,estimate=estimate);update(state.copy(events=listOf(entry.copy(hash=eventHash(state.events.firstOrNull()?.hash.orEmpty(),entry)))+state.events))}
  var serverDown by mutableStateOf(false)
  private fun action(block:suspend()->Unit){if(busy)return;busy=true;viewModelScope.launch{try{block()}catch(e:CancellationException){throw e}catch(e:Exception){handleSessionError(e);feedback=e.localizedMessage?:"연결을 확인하고 다시 시도해 주세요."}finally{busy=false}}}
  private fun handleSessionError(e:Exception){if(e is ApiException&&e.status==401&&!repository.hasSession&&!state.preview){generation++;polling?.cancel();photoCache.clear();requestIds.clear();pendingSite=null;onboarding="login";app.stopService(Intent(app,SafetyService::class.java));state=WorkerState.live("","작업자").copy(connectionProblem="로그인이 만료됐어요. 내 정보에서 다시 연결해 주세요.")}}
@@ -104,7 +112,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   state=state.copy(beforeLocation=status)
  }
  fun checkIn(location:Map<String,Any?>?=null)=action {
-  if(state.preview){update(state.attend());event("출근 기록",state.zone)}
+  if(state.preview){update(state.attend().copy(prompts=scheduledPrompts(now)));event("출근 기록",state.zone)}
   else{repository.request("POST","/attendances",mapOf("siteId" to repository.siteId,"location" to location));changed()}
   feedback=if(location==null&&!state.preview)"출근을 저장했어요. 위치는 미확인으로 표시됩니다." else "출근을 저장했어요."
  }
@@ -128,7 +136,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   require(observed=="착용"||observed=="미착용")
   val checked=observed=="착용"
   require(checked||localPhoto==null){"불일치 모습은 저장하지 않아요."}
-  if(state.preview){update(state.copy(peerEvidence=listOf(PeerEvidence(state.uid,"preview-buddy-shift",if(checked)"checked" else "mismatch",now,localPhoto,localPhoto)),peerChecked=checked,peerStatus=if(!checked)"mismatch" else if(localPhoto!=null)"photo_confirmed" else "statement_only"));event("동료 교차 확인",if(checked)state.buddyName else "불일치 · 조치 후 다시 확인")}
+  if(state.preview){update(state.copy(peerEvidence=listOfNotNull(PeerEvidence(state.uid,"preview-buddy-shift",if(checked)"checked" else "mismatch",now,localPhoto,localPhoto),PeerEvidence("preview-buddy","preview-self-shift","checked",now).takeIf{checked}),peerChecked=checked,peerStatus=if(!checked)"mismatch" else if(localPhoto!=null)"photo_confirmed" else "statement_only"));event("동료 교차 확인",if(checked)state.buddyName else "불일치 · 조치 후 다시 확인")}
   else{val originalBuddy=state.verifiedBuddyTarget(target);val image=if(checked&&localPhoto!=null)upload(localPhoto,"ppe")else null;repository.request("PUT","/attendances/$originalBuddy/peer-check",mapOf("outcome" to if(checked)"checked" else "mismatch","photoId" to image));changed()}
   feedback="동료 확인을 저장했어요.";onSaved()
  }
@@ -147,6 +155,8 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   if(state.preview){val risk=state.risks.first{it.id==id};require(risk.fixerName!=state.name){"조치한 사람 외 동료가 확인해 주세요."};update(state.copy(risks=state.risks.map{if(it.id==id)it.copy(status="verified",verifierName=state.name,verifiedAt=now,canRecheck=false)else it}))}
   else{repository.request("PUT","$sitePath/risks/$id/recheck",emptyMap());changed()};feedback="재확인을 저장했어요."
  }
+ // 체험 모드에는 다른 동료가 없어서 재확인 장면을 대신 보여준다.
+ fun simulateRecheck(id:String)=action {require(state.preview);update(state.copy(risks=state.risks.map{if(it.id==id)it.copy(status="verified",verifierName=state.buddyName,verifiedAt=now)else it}));event("위험 재확인",state.buddyName+" · 체험 예시")}
  fun setCarried(enabled:Boolean)=action {
   if(!enabled){app.stopService(Intent(app,SafetyService::class.java));state=state.copy(monitoring=false)}
   if(state.preview){update(state.copy(carried=enabled,deviceState=if(enabled)"carried" else "not_carried"));event("기기 휴대 상태",if(enabled)"휴대 중" else "미휴대")}
@@ -160,7 +170,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   update(state.copy(monitoring=enabled));feedback=if(enabled)"감시 중에는 휴대폰을 몸에 휴대해 주세요." else "움직임 감시를 종료했어요."
  }
  fun highRisk(task:String?)=action {
-  if(state.preview){require(state.currentShift!=null);val prompt=WorkPrompt(UUID.randomUUID().toString(),if(task==null)"high_risk_end" else "high_risk_start",now,"pending");update(state.copy(highRiskTask=task,highRiskStartedAt=task?.let{now},prompts=state.prompts+prompt));event("고위험 작업",task?:"종료")}
+  if(state.preview){require(state.currentShift!=null);val prompt=WorkPrompt(UUID.randomUUID().toString(),if(task==null)"high_risk_end" else "high_risk_start",now,"pending");update(state.copy(highRiskTask=task,highRiskStartedAt=task?.let{now},prompts=state.prompts+prompt));event("고위험 작업",task?.let(::highRiskLabel)?:"종료")}
   else{repository.request("PUT","/attendances/${shiftId()}/high-risk",mapOf("task" to task));changed()};monitoringPrefs.edit().putString("highRiskTask",task).apply()
  }
  fun answerPrompt(id:String,answer:String)=action {
@@ -178,22 +188,26 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   if(state.preview)update(state.copy(emergencyPush=emergency,sitePush=site))else{repository.request("PUT","/me/notification-preferences",mapOf("emergencyPush" to emergency,"sitePush" to site));changed()}
  }
  @Suppress("DEPRECATION") fun refreshMonitoring(){val active=(app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getRunningServices(100).any{it.service.className==SafetyService::class.java.name};state=state.copy(monitoring=active)}
- private fun readPreviewSensor(){if(!state.preview)return;val id=monitoringPrefs.getString("previewSignalId",null)?:return;if(monitoringPrefs.getString("previewProcessed",null)==id)return;val at=monitoringPrefs.getLong("previewSignalAt",now);update(state.copy(calls=listOf(WorkerCall(id,subject=state.uid,subjectName=state.name,zone=state.zone,deadline=at+15000,createdAt=at))+state.calls));event("이상 움직임 감지","센서 추정 신호",true);monitoringPrefs.edit().putString("previewProcessed",id).apply()}
- fun simulateSelf(){if(!state.preview)return;if(state.activeCalls.any{it.isSubject(state.uid)})return;val call=WorkerCall(UUID.randomUUID().toString(),subject=state.uid,subjectName=state.name,zone=state.zone,createdAt=now);update(state.copy(calls=listOf(call)+state.calls));event("체험 이상 신호","사고 확정 아님",true);notifyPreview("괜찮으세요?","15초 안에 안전 상태를 확인해 주세요.",call.id)}
+ private fun readPreviewSensor(){if(!state.preview)return;val id=monitoringPrefs.getString("previewSignalId",null)?:return;if(monitoringPrefs.getString("previewProcessed",null)==id)return;val at=monitoringPrefs.getLong("previewSignalAt",now);update(state.copy(calls=listOf(WorkerCall(id,subject=state.uid,subjectName=state.name,zone=state.zone,deadline=at+15000,createdAt=at,peakG=monitoringPrefs.getFloat("previewSignalPeak",0f).takeIf{it>0f}?.toDouble(),dropMeters=monitoringPrefs.getFloat("previewSignalDrop",0f).takeIf{it>0f}?.toDouble()))+state.calls));event("이상 움직임 감지","센서 추정 신호",true);monitoringPrefs.edit().putString("previewProcessed",id).apply()}
+ fun simulateSelf(){if(!state.preview)return;update(state.copy(calls=state.calls.map{if(it.isSubject(state.uid)&&it.status!="closed")it.copy(status="closed",resolution="worker_confirmed_okay")else it}));val call=WorkerCall(UUID.randomUUID().toString(),subject=state.uid,subjectName=state.name,zone=state.zone,createdAt=now);update(state.copy(calls=listOf(call)+state.calls));event("체험 이상 신호","사고 확정 아님",true);notifyPreview("괜찮으세요?","15초 안에 안전 상태를 확인해 주세요.",call.id)}
+ /** 말로 괜찮다고 답한 경우. 사람의 응답이지만 터치와 구분해 남긴다. */
+ fun respondByVoice(callId:String){if(state.preview)event("본인 음성 응답","괜찮다고 말함");respond(callId,"safe")}
+ fun noteVideo(seconds:Int){if(state.preview&&seconds>0)event("상황 영상 저장","소리 없이 ${seconds}초 · 이 폰에만 저장")}
+ fun simulatePrompt(){if(!state.preview)return;val prompt=WorkPrompt(UUID.randomUUID().toString(),"break_return",now,"pending");update(state.copy(prompts=state.prompts+prompt));requestedRoute="prompt:${prompt.id}"}
  fun simulateIncoming(){if(!state.preview)return;val call=WorkerCall(UUID.randomUUID().toString(),subject="preview-buddy",subjectName=state.buddyName,zone=state.buddyZone,stage="peer",createdAt=now);update(state.copy(calls=listOf(call)+state.calls));openCallId=call.id}
  fun respond(callId:String,response:String,localPhoto:String?=null)=runIncidentAction(callId) {
   val call=state.calls.firstOrNull{it.id==callId}?:error("요청 정보를 다시 불러와 주세요.")
   if(state.preview){val next=when{
-   response=="safe"->{require(call.isSubject(state.uid));if(call.stage=="self"&&now<call.deadline)call.copy(status="closed",resolution="worker_confirmed_okay",respondedAt=now)else call.copy(workerResponse="okay",respondedAt=now)}
+   response=="safe"->{require(call.isSubject(state.uid));if((call.stage=="self"&&now<call.deadline)||call.acceptedBy==null)call.copy(status="closed",resolution="worker_confirmed_okay",respondedAt=now)else call.copy(workerResponse="okay",respondedAt=now)}
    response=="help"->call.copy(stage="peer")
-   response=="accepted"->call.accept(state.uid)
+   response=="accepted"->call.accept(state.uid).copy(acceptedAt=now)
    response=="arrived"->call.arrive(state.uid)
    response=="declined"->call.copy(serverStatus="unanswered")
    response=="retry"->call.copy(serverStatus="calling")
    response.startsWith("observe:")->call.observe(state.uid,response.substringAfter(':'))
    response.startsWith("finish:")->call.verify(state.uid,localPhoto,response.substringAfter(':'))
    else->error("지원하지 않는 응답입니다.")
-  };update(state.copy(calls=state.calls.map{if(it.id==callId)next else it}));event("안전 확인 응답",response)}
+  };update(state.copy(calls=state.calls.map{if(it.id==callId)next else it}));event(responseLabel(response),call.subjectName)}
   else{val path="/incidents/$callId";val result=when{
    response=="safe"||response=="help"->{val key="$callId:$response";val body=mapOf("requestId" to requestId(key),"response" to if(response=="safe")"okay" else "help_needed")
     val r=try{repository.request("PUT","$path/worker-response",body)}catch(e:java.io.IOException){
@@ -290,6 +304,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  // 서버에 닿지 않으면 입력한 이름으로 체험 모드를 시작한다. 실제 가입으로 표시하지 않는다.
  fun continueOffline(name:String)=action {serverDown=false;feedback=null;enterPreview();if(name.isNotBlank())update(state.copy(name=name.trim()));onboarding="profile"}
  fun usePreview()=action {enterPreview()}
+ fun changeServer(url:String)=action {val clean=url.trim().trimEnd('/');NestHttp(clean,BuildConfig.DEBUG);repository.serverUrl=clean;serverDown=false;feedback="서버 주소를 저장했어요. 다시 시도해 주세요."}
  private suspend fun enterPreview() {
   generation++;polling?.cancel();app.stopService(Intent(app,SafetyService::class.java))
   try {repository.logout()} finally {
@@ -299,7 +314,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   }
  }
  fun resetPreview(){if(!state.preview)return;app.stopService(Intent(app,SafetyService::class.java));update(WorkerState.preview());feedback="체험 기록을 초기화했어요."}
- fun emergency(incidentId:String?=null){if(state.preview){event("119 전화 화면 열기","실제 통화·접수 여부는 확인하지 않음");return};if(!repository.hasSession||repository.siteId.isBlank()){feedback="전화 화면을 열었지만 로그인·현장 연결을 확인할 수 없어 기록은 저장하지 못했어요.";return};val activeId=incidentId?.takeUnless{id->state.calls.any{it.id==id&&it.status=="closed"}}
+ fun emergency(incidentId:String?=null){if(state.preview){event("119 전화 화면 열기","실제 통화·접수 여부는 확인하지 않음");incidentId?.let{id->update(state.copy(calls=state.calls.map{if(it.id==id)it.copy(dialTimes=it.dialTimes+now)else it}))};return};if(!repository.hasSession||repository.siteId.isBlank()){feedback="전화 화면을 열었지만 로그인·현장 연결을 확인할 수 없어 기록은 저장하지 못했어요.";return};val activeId=incidentId?.takeUnless{id->state.calls.any{it.id==id&&it.status=="closed"}}
   val path=if(activeId==null)"$sitePath/dial-intents" else "/incidents/$activeId/dial-intent"
   runCatching{repository.queueRequest(if(activeId==null)"POST" else "PUT",path,mapOf("requestId" to UUID.randomUUID().toString(),"openedAt" to Instant.now().toString()))}.onFailure{feedback="전화 화면은 열었지만 기록 저장을 예약하지 못했어요."}}
  fun retrySignal()=action {
@@ -412,7 +427,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  private fun mapCall(m:Map<String,Any?>):WorkerCall{val id=m.text("id");val status=m.text("status");val position=m.obj("location");return WorkerCall(id=id,subject=m.text("workerId"),subjectName=m.obj("worker").text("name").ifBlank{state.name},zone=m.text("zone"),stage=if(status=="awaiting_worker")"self" else "peer",status=when(status){"closed"->"closed";"responding","arrived"->"accepted";else->"pending"},deadline=parseTime(m[if(status=="awaiting_worker")"workerDueAt" else "nextCallAt"])?:0,acceptedBy=m.nullText("responderId"),arrivedAt=parseTime(m["arrivedAt"]),photo=photoCache[m.nullText("photoId")],resolution=m.nullText("resolution"),serverStatus=status,observation=m.nullText("observation"),photoId=m.nullText("photoId"),recipients=m.rows("recipients").map{CallRecipient(it.text("userId"),it.text("name"),it.text("role"),it.text("delivery"),parseTime(it["receivedAt"]),parseTime(it["openedAt"]),parseTime(it["acceptedAt"]),parseTime(it["declinedAt"]))},latitude=position.number("latitude")?.toDouble(),longitude=position.number("longitude")?.toDouble(),accuracy=position.number("accuracyMeters")?.toDouble(),workerResponse=m.nullText("workerResponse"),respondedAt=parseTime(m["workerRespondedAt"]),acceptedAt=parseTime(m["acceptedAt"]),dialTimes=m.rows("dialIntents").mapNotNull{parseTime(it["openedAt"])},observationNotice=m.rows("notices").lastOrNull{it.text("type")=="observation"}?.let{when(it.text("status")){"sent"->"발송 ${clockText(parseTime(it["sentAt"]))} · 단말 수신 미확인";"failed"->"발송 실패";else->"발송 대기"}},createdAt=parseTime(m["createdAt"])?:0)}
  private fun rememberCall(m:Map<String,Any?>){if(m.isNotEmpty()){incidentRevision++;val call=mapCall(m);state=state.copy(calls=listOf(call)+state.calls.filter{it.id!=call.id})}}
  private fun registerToken(){if(FirebaseApp.getApps(app).isEmpty())return;viewModelScope.launch{runCatching{repository.registerDevice(FirebaseMessaging.getInstance().token.await())}.onFailure{feedback="API 연결은 완료했지만 푸시 기기 등록에 실패했어요. 알림 설정을 확인해 주세요."}}}
- private fun notifyPreview(title:String,body:String,callId:String){val nm=app.getSystemService(NotificationManager::class.java);nm.createNotificationChannel(NotificationChannel("alerts","안전 확인 요청",NotificationManager.IMPORTANCE_HIGH).apply{enableVibration(true)});val open=PendingIntent.getActivity(app,callId.hashCode(),Intent(app,MainActivity::class.java).putExtra("callId",callId),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE);runCatching{nm.notify(callId.hashCode(),NotificationCompat.Builder(app,"alerts").setSmallIcon(android.R.drawable.ic_dialog_alert).setContentTitle("[체험] $title").setContentText(body).setContentIntent(open).setAutoCancel(true).build())}}
+ private fun notifyPreview(title:String,body:String,callId:String,openCall:Boolean=true){val nm=app.getSystemService(NotificationManager::class.java);nm.createNotificationChannel(NotificationChannel("alerts","안전 확인 요청",NotificationManager.IMPORTANCE_HIGH).apply{enableVibration(true)});val target=Intent(app,MainActivity::class.java).putExtra("alert",true);if(openCall)target.putExtra("callId",callId);val open=PendingIntent.getActivity(app,callId.hashCode(),target,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE);runCatching{nm.notify(callId.hashCode(),NotificationCompat.Builder(app,"alerts").setSmallIcon(android.R.drawable.ic_dialog_alert).setContentTitle("[체험] $title").setContentText(body).setContentIntent(open).setFullScreenIntent(open,true).setCategory(NotificationCompat.CATEGORY_ALARM).setAutoCancel(true).build())}}
  override fun onCleared(){polling?.cancel();monitoringPrefs.unregisterOnSharedPreferenceChangeListener(preferencesListener);super.onCleared()}
 }
 @Suppress("UNCHECKED_CAST") private fun Map<String,Any?>.obj(key:String)=(this[key] as? Map<String,Any?>)?:emptyMap()

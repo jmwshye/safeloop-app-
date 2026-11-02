@@ -21,6 +21,7 @@ class SafetyService : Service(), SensorEventListener {
     private val detector = MotionDetector()
     private val gravity = DoubleArray(3)
     private val samples = ArrayDeque<Pair<Long, Double>>()
+    private val pressure = ArrayDeque<Pair<Long, Float>>()
     private var raw = false
     private var settlingUntil = 0L
     private var lastSampleAt = 0L
@@ -56,6 +57,7 @@ class SafetyService : Service(), SensorEventListener {
         raw = sensor.type == Sensor.TYPE_ACCELEROMETER
         settlingUntil = SystemClock.elapsedRealtime() + 2000
         if (!sensors.registerListener(this, sensor, 20000)) { notifySelf(null, "센서 등록에 실패했습니다."); stopSelf(); return }
+        sensors.getDefaultSensor(Sensor.TYPE_PRESSURE)?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SafeLoop:MotionMonitoring").apply { acquire() }
         prefs.edit().putBoolean("monitoring", true).apply()
         if (!prefs.getBoolean("previewMonitoring", false)) scope.launch { heartbeat() }
@@ -86,6 +88,11 @@ class SafetyService : Service(), SensorEventListener {
     }
     override fun onSensorChanged(event: SensorEvent) {
         val now = SystemClock.elapsedRealtime()
+        if (event.sensor.type == Sensor.TYPE_PRESSURE) {
+            pressure.addLast(now to event.values[0])
+            while (pressure.isNotEmpty() && now - pressure.first().first > 20_000) pressure.removeFirst()
+            return
+        }
         val v = DoubleArray(3) { i -> val value = event.values[i].toDouble(); if (raw) { gravity[i] = 0.8 * gravity[i] + 0.2 * value; value - gravity[i] } else value }
         if (now < settlingUntil || v.any { !it.isFinite() }) return
         val accelerationG = sqrt(v.sumOf { it * it }) / 9.80665
@@ -96,11 +103,13 @@ class SafetyService : Service(), SensorEventListener {
             prefs.getString("signalSite", null) == monitorSite && prefs.getString("signalAttendance", null) == prefs.getString("attendanceId", null)) return
         val detectedAt = Instant.now()
         val localId = UUID.randomUUID().toString()
+        SafetyAlarm.start(this, voice = SafetySpeech.SELF_CHECK)
         prefs.edit().putString("localAlert", localId).remove("localCallId").remove("signalFailed").apply()
         if (prefs.getBoolean("previewMonitoring", false)) {
-            prefs.edit().putLong("previewSignalAt", System.currentTimeMillis()).putString("previewSignalId", localId).apply()
+            prefs.edit().putLong("previewSignalAt", System.currentTimeMillis()).putString("previewSignalId", localId)
+                .putFloat("previewSignalPeak", detector.lastDetectedPeakG.toFloat()).putFloat("previewSignalDrop", altitudeDropMeters(pressure.toList(), now)?.toFloat() ?: 0f).apply()
             notifySelf(null, "움직임 변화가 감지되었습니다. 15초 안에 확인해 주세요. · 체험 모드", localId)
-            scope.launch { delay(15000); if (prefs.getString("ackAlert", null) != localId) notifySelf(null, "체험: 동료 확인 대기 단계입니다. 실제 알림은 전송하지 않습니다.", localId) }
+            scope.launch { delay(15000); if (prefs.getString("ackAlert", null) != localId) { notifySelf(null, "체험: 동료 확인 대기 단계입니다. 실제 알림은 전송하지 않습니다.", localId); SafetyAlarm.beacon(this@SafetyService, voice = SafetySpeech.CALLING) } }
             return
         }
         val window = samples.map { (at, g) -> mapOf("offsetMs" to (at - now).toInt(), "accelerationG" to g.coerceIn(0.0, 1000.0)) }
@@ -159,7 +168,7 @@ class SafetyService : Service(), SensorEventListener {
             .putExtra("siteId", monitorSite).putExtra("recipientId", monitorUid).putExtra("callId", call), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         runCatching { getSystemService(NotificationManager::class.java).notify(103, NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("안전 확인이 필요합니다").setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body)).setContentIntent(open)
-            .addAction(0, "상태 확인", open).addAction(0, "119 전화 화면", dial).setPriority(NotificationCompat.PRIORITY_HIGH).setCategory(NotificationCompat.CATEGORY_ALARM).setAutoCancel(true).build()) }
+            .addAction(0, "상태 확인", open).addAction(0, "119 전화 화면", dial).setFullScreenIntent(open, true).setPriority(NotificationCompat.PRIORITY_HIGH).setCategory(NotificationCompat.CATEGORY_ALARM).setAutoCancel(true).build()) }
     }
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
     override fun onDestroy() {
