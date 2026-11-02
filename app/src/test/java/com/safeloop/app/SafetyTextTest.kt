@@ -11,7 +11,7 @@ class SafetyTextTest {
         listOf("", "아파트 2층이에요", "오늘 점심 뭐 먹지", "안 아파요", "안 다쳤어요", "괜찮아요 도와줘 필요 없어요").forEach { assertFalse(it, helpRequested(it)) }
     }
     @Test fun shortOkayAnswersCount() {
-        listOf("괜찮아", "괜찮아요", "괜찮습니다", "네 괜찮아요", "저 괜찮아요.", "멀쩡해요").forEach { assertTrue(it, okayRequested(it)) }
+        listOf("괜찮아", "괜찮아요", "괜찮아 요", "괜찮습니다", "네 괜찮아요", "저 괜찮아요.", "멀쩡해요", "괜찮아요 괜찮아요", "네 네 괜찮아요", "응 괜찮아").forEach { assertTrue(it, okayRequested(it)) }
     }
     @Test fun okayInsideOtherTalkDoesNotStopTheCall() {
         listOf("", "안 괜찮아요", "괜찮지 않아", "괜찮아요 도와주세요", "저기 괜찮아요 여기로 가져오세요", "그거 괜찮아 보여", "도와줘").forEach { assertFalse(it, okayRequested(it)) }

@@ -54,6 +54,19 @@ object SafetyAlarm {
         handler.postDelayed(stopLater, durationMs)
     }
 
+    /** 말을 듣는 동안 진동음이 마이크에 들어가지 않게 진동만 멈춘다. */
+    @Synchronized fun pauseVibration() {
+        runCatching { vibrator?.cancel() }
+        vibrator = null
+    }
+
+    /** 듣기가 다시 시작되는 틈에 짧게 울려 주머니 속에서도 알 수 있게 한다. */
+    fun pulse(context: Context) { runCatching {
+        val app = context.applicationContext
+        val device = if (Build.VERSION.SDK_INT >= 31) app.getSystemService(VibratorManager::class.java).defaultVibrator else app.getSystemService(Vibrator::class.java)
+        device.vibrate(VibrationEffect.createOneShot(250, VibrationEffect.DEFAULT_AMPLITUDE), alarmSound)
+    } }
+
     @Synchronized fun stop() {
         handler.removeCallbacks(stopLater)
         ringLater?.let(handler::removeCallbacks)

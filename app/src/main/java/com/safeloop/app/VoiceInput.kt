@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -28,15 +29,17 @@ import androidx.core.content.ContextCompat
  * 폰의 음성 인식으로 듣는다. 녹음을 저장하지 않고 글자만 넘겨받는다.
  * 인식 서비스나 권한이 없으면 아무 일도 하지 않으므로 화면과 버튼은 그대로 동작한다.
  */
-class VoiceListener(context: Context, private val continuous: Boolean, private val onPartial: (String) -> Unit, private val onDone: (String) -> Unit = {}, private val onFinal: (String) -> Unit = {}) {
+class VoiceListener(context: Context, private val continuous: Boolean, private val onPartial: (String) -> Unit, private val onDone: (String) -> Unit = {}, private val onFinal: (String) -> Unit = {}, private val onGap: () -> Unit = {}) {
     private val app = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var active = false
     private var heard = ""
-    private val listen = Runnable { if (active) runCatching { recognizer?.startListening(request()) }.onFailure { finish() } }
+    private var settle: Runnable? = null
+    private val listen = Runnable { log("listen active=$active"); if (active) runCatching { recognizer?.startListening(request()) }.onFailure { log("listen failed $it"); finish() } }
 
     fun start(delayMs: Long = 0) {
+        log("start active=$active available=${available(app)} mic=${hasMicrophone(app)} delay=$delayMs")
         if (active || !available(app) || !hasMicrophone(app)) return
         active = true
         heard = ""
@@ -48,6 +51,7 @@ class VoiceListener(context: Context, private val continuous: Boolean, private v
     fun stop() {
         active = false
         handler.removeCallbacks(listen)
+        settle?.let(handler::removeCallbacks)
         runCatching { recognizer?.cancel(); recognizer?.destroy() }
         recognizer = null
     }
@@ -65,17 +69,28 @@ class VoiceListener(context: Context, private val continuous: Boolean, private v
 
     private fun best(results: Bundle?) = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
 
-    private fun nextRound() { if (continuous && active) handler.postDelayed(listen, 300) else finish() }
+    private fun log(message: String) { if (BuildConfig.DEBUG) Log.d("SafetyVoice", message) }
+
+    private fun nextRound() {
+        settle?.let(handler::removeCallbacks)
+        if (continuous && active) { heard = ""; runCatching { recognizer?.cancel() }; onGap(); handler.postDelayed(listen, 500) } else finish()
+    }
+
+    /** 폰에 따라 최종 결과 없이 끝나므로, 말이 잠시 멈추면 지금까지 들은 말을 끝난 말로 본다. */
+    private fun settleLater(text: String) {
+        settle?.let(handler::removeCallbacks)
+        settle = Runnable { log("settled: $text"); onFinal(text) }.also { handler.postDelayed(it, 700) }
+    }
 
     private val callback = object : RecognitionListener {
-        override fun onPartialResults(partialResults: Bundle?) { best(partialResults).takeIf { it.isNotBlank() }?.let { heard = it; onPartial(it) } }
-        override fun onResults(results: Bundle?) { best(results).takeIf { it.isNotBlank() }?.let { heard = it; onPartial(it); onFinal(it) }; nextRound() }
-        override fun onError(error: Int) = nextRound()
-        override fun onReadyForSpeech(params: Bundle?) = Unit
-        override fun onBeginningOfSpeech() = Unit
+        override fun onPartialResults(partialResults: Bundle?) { best(partialResults).takeIf { it.isNotBlank() }?.let { log("partial: $it"); heard = it; onPartial(it); settleLater(it) } }
+        override fun onResults(results: Bundle?) { settle?.let(handler::removeCallbacks); val text = best(results).ifBlank { heard }; log("final: $text"); if (text.isNotBlank()) { heard = text; onPartial(text); onFinal(text) }; nextRound() }
+        override fun onError(error: Int) { log("error: $error"); settle?.let(handler::removeCallbacks); heard.takeIf { it.isNotBlank() }?.let(onFinal); nextRound() }
+        override fun onReadyForSpeech(params: Bundle?) { log("ready") }
+        override fun onBeginningOfSpeech() { log("speech begins") }
         override fun onRmsChanged(rmsdB: Float) = Unit
         override fun onBufferReceived(buffer: ByteArray?) = Unit
-        override fun onEndOfSpeech() = Unit
+        override fun onEndOfSpeech() { log("speech ends") }
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
     }
 
