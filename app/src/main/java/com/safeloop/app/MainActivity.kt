@@ -47,9 +47,10 @@ class MainActivity:ComponentActivity(){
   WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=true;isAppearanceLightNavigationBars=true}
   controller=ViewModelProvider(this)[WorkerController::class.java]
   handleIntent(intent)
-  setContent{WorkerTheme{WorkerApp(controller,WorkerActions(dial=::dial,camera=::capture,attend=::attend,monitor={},export=::exportRecords,notificationSettings=::notificationSettings,notifications=::notifications))}}
+  setContent{WorkerTheme{WorkerApp(controller,WorkerActions(dial=::dial,camera=::capture,attend=::attend,monitor={enabled->if(enabled)notifications{controller.setMonitoring(true)}else controller.setMonitoring(false)},export=::exportRecords,notificationSettings=::notificationSettings,notifications=::notifications))}}
  }
  override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);handleIntent(intent)}
+ override fun onResume(){super.onResume();if(::controller.isInitialized)controller.refreshMonitoring()}
  private fun handleIntent(intent:Intent){controller.openCallId=intent.getStringExtra("callId");if(intent.getBooleanExtra("alert",false)&&intent.getStringExtra("callId")==null&&!controller.state.preview)controller.feedback="휴대폰 감지 알림입니다. 서버 연결을 확인할 수 없으면 주변 동료에게 직접 연락해 주세요."}
  private fun notifications(action:()->Unit){
   val manager=getSystemService(NotificationManager::class.java)
