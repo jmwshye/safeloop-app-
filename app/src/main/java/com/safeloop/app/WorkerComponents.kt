@@ -2,6 +2,8 @@ package com.safeloop.app
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,26 +12,33 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // 와이어프레임 7장 색 기준 (docs/wireframe.md 2장)
 val Brand=Color(0xFF1D5FD1)
+val BrandDark=Color(0xFF1546A0)
 val BrandSoft=Color(0xFFE9F1FE)
 val Ink=Color(0xFF1F2A37)
 val Muted=Color(0xFF4B5B6B)
 val CanvasColor=Color(0xFFF6F8FB)
 val Line=Color(0xFFE1E7EE)
+val NeutralFill=Color(0xFFEAEFF5)
 val Ok=Color(0xFF0E7A4E)
 val OkSoft=Color(0xFFE4F5EC)
 val Amber=Color(0xFF8A5300)
@@ -74,31 +83,48 @@ private val iconPaths=mapOf(
   scale(size.width/24f,size.height/24f,pivot=Offset.Zero){drawPath(path,tint,style=Stroke(width=1.65f,cap=StrokeCap.Round,join=StrokeJoin.Round))}
  }
 }
-@Composable fun SLPill(text:String,amber:Boolean=false,neutral:Boolean=false,danger:Boolean=false){val tint=if(danger)Danger else if(amber)Amber else if(neutral)Muted else Ok;val bg=if(danger)DangerSoft else if(amber)PaleAmber else if(neutral)CanvasColor else OkSoft
- Row(Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal=9.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)){
-  Box(Modifier.size(4.dp).background(tint,CircleShape));Text(text,fontSize=13.sp,color=tint,fontWeight=FontWeight.SemiBold)
+// 상태 칩. fact는 사람이 확인(실선), estimate는 시스템이 추정(점선)
+@Composable fun SLPill(text:String,amber:Boolean=false,neutral:Boolean=false,danger:Boolean=false,fact:Boolean=false,estimate:Boolean=false){val tint=if(danger)Danger else if(amber)Amber else if(neutral)Muted else Ok;val bg=if(fact||estimate)Color.White else if(danger)DangerSoft else if(amber)PaleAmber else if(neutral)NeutralFill else OkSoft
+ val edge=when{
+  estimate->Modifier.drawBehind{val w=1.5.dp.toPx();drawRoundRect(tint,topLeft=Offset(w/2,w/2),size=Size(size.width-w,size.height-w),cornerRadius=CornerRadius(size.height/2),style=Stroke(width=w,pathEffect=PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(),3.dp.toPx()))))}
+  fact->Modifier.border(1.5.dp,tint,RoundedCornerShape(999.dp))
+  else->Modifier
+ }
+ Row(Modifier.background(bg,RoundedCornerShape(999.dp)).then(edge).padding(horizontal=11.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
+  if(fact)SLIcon("check",Modifier.size(12.dp),tint) else if(estimate)SLIcon("activity",Modifier.size(12.dp),tint) else Box(Modifier.size(8.dp).background(tint,CircleShape));Text(text,fontSize=13.sp,color=tint,fontWeight=FontWeight.Bold,maxLines=1)
  }
 }
-@Composable fun SLCard(modifier:Modifier=Modifier,color:Color=Color.White,content:@Composable ColumnScope.()->Unit){Surface(modifier.fillMaxWidth(),color=color,shape=RoundedCornerShape(20.dp),border=BorderStroke(1.dp,if(color==Color.White)Line else color)) {Column(Modifier.padding(19.dp),verticalArrangement=Arrangement.spacedBy(14.dp),content=content)}}
+private fun cardEdge(color:Color)=when(color){Color.White->Line;BrandSoft->Color(0xFFBCD3F7);OkSoft->Color(0xFFB7DEC8);PaleAmber->Color(0xFFF0D49A);DangerSoft->Color(0xFFF2B8B4);else->color}
+@Composable fun SLCard(modifier:Modifier=Modifier,color:Color=Color.White,content:@Composable ColumnScope.()->Unit){Surface(modifier.fillMaxWidth(),color=color,shape=RoundedCornerShape(18.dp),border=BorderStroke(1.5.dp,cardEdge(color))) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp),content=content)}}
+// 줄로 나뉜 정보 카드 (와이어프레임 .card.flat)
+@Composable fun FlatCard(rows:List<Pair<String,String>>){Surface(Modifier.fillMaxWidth(),color=Color.White,shape=RoundedCornerShape(18.dp),border=BorderStroke(1.5.dp,Line)){Column(Modifier.padding(horizontal=16.dp,vertical=4.dp)){rows.forEachIndexed{i,(label,value)->if(i>0)HorizontalDivider(color=Line);Box(Modifier.padding(vertical=12.dp)){DetailRow(label,value)}}}}}
+// 주 버튼은 아래 4px 그림자가 있고 누르면 2px 내려간다. 장갑을 낀 손에서도 눌림이 보여야 한다.
 @Composable fun SLButton(text:String,onClick:()->Unit,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:String?=null,color:Color=Brand){
- if(secondary)OutlinedButton(onClick,modifier.fillMaxWidth().heightIn(min=56.dp),enabled=enabled,shape=RoundedCornerShape(16.dp),border=BorderStroke(2.dp,Line),colors=ButtonDefaults.outlinedButtonColors(contentColor=Ink)){
-  if(icon!=null){SLIcon(icon,Modifier.size(20.dp),Ink);Spacer(Modifier.width(8.dp))};Text(text,fontSize=16.sp,fontWeight=FontWeight.Bold)
- }else Button(onClick,modifier.fillMaxWidth().heightIn(min=60.dp),enabled=enabled,shape=RoundedCornerShape(16.dp),colors=ButtonDefaults.buttonColors(containerColor=color,disabledContainerColor=Line,disabledContentColor=Muted)){
-  if(icon!=null){SLIcon(icon,Modifier.size(20.dp),Color.White);Spacer(Modifier.width(8.dp))};Text(text,fontSize=18.sp,fontWeight=FontWeight.ExtraBold)
+ val press=remember{MutableInteractionSource()};val pressed by press.collectIsPressedAsState();val drop=if(pressed&&enabled)2.dp else 0.dp
+ val shape=RoundedCornerShape(16.dp);val fill=if(secondary)Color.White else if(enabled)color else Line;val ink=if(secondary)Ink else if(enabled)Color.White else Muted
+ val shade=if(secondary||!enabled)Line else when(color){Danger->Color(0xFF8F1712);Ok->Color(0xFF0A5A3A);else->BrandDark}
+ Box(modifier.fillMaxWidth().background(shade,shape)){
+  Row(Modifier.padding(top=drop,bottom=4.dp-drop).fillMaxWidth().heightIn(min=if(secondary)52.dp else 60.dp).background(fill,shape).then(if(secondary)Modifier.border(2.dp,Line,shape)else Modifier).clickable(press,null,enabled,role=Role.Button,onClick=onClick).padding(horizontal=20.dp,vertical=8.dp),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){
+   if(icon!=null){SLIcon(icon,Modifier.size(22.dp),ink);Spacer(Modifier.width(8.dp))};Text(text,fontSize=if(secondary)17.sp else 19.sp,fontWeight=FontWeight.ExtraBold,color=ink,textAlign=TextAlign.Center)
+  }
  }
 }
-@Composable fun SLField(label:String,value:String,onValue:(String)->Unit,placeholder:String="",singleLine:Boolean=true,modifier:Modifier=Modifier){Column(verticalArrangement=Arrangement.spacedBy(8.dp),modifier=modifier){Text(label,fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=Ink);OutlinedTextField(value,onValue,modifier=Modifier.fillMaxWidth(),placeholder={Text(placeholder,fontSize=15.sp,color=Muted)},singleLine=singleLine,minLines=if(singleLine)1 else 3,shape=RoundedCornerShape(13.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedBorderColor=Line,focusedBorderColor=Brand,unfocusedContainerColor=Color.White,focusedContainerColor=Color.White),textStyle=MaterialTheme.typography.bodyLarge.copy(fontSize=15.sp,color=Ink))}}
-@Composable fun PageHeading(eyebrow:String,title:String,subtitle:String?=null){Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text(eyebrow,fontSize=13.sp,color=Muted,fontWeight=FontWeight.Medium,letterSpacing=.7.sp);Text(title,fontSize=27.sp,lineHeight=36.sp,color=Ink,fontWeight=FontWeight.ExtraBold,letterSpacing=(-.8).sp);if(subtitle!=null)Text(subtitle,fontSize=14.sp,lineHeight=23.sp,color=Muted)}}
-@Composable fun SectionHeading(title:String,action:String?=null,onAction:()->Unit={}){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){Text(title,fontSize=17.sp,fontWeight=FontWeight.Bold,color=Ink,letterSpacing=(-.4).sp);if(action!=null)TextButton(onAction,contentPadding=PaddingValues(horizontal=0.dp)){Text(action,fontSize=14.sp,color=Muted);Spacer(Modifier.width(3.dp));SLIcon("chevron",Modifier.size(14.dp),Muted)}}}
-@Composable fun Avatar(name:String,size:Int=44){Box(Modifier.size(size.dp).background(BrandSoft,CircleShape),contentAlignment=Alignment.Center){Text(name.take(1),fontSize=(size*.34).sp,fontWeight=FontWeight.Bold,color=Brand)}}
+@Composable fun GhostButton(text:String,onClick:()->Unit,enabled:Boolean=true,color:Color=Brand){TextButton(onClick,Modifier.fillMaxWidth().heightIn(min=48.dp),enabled=enabled){Text(text,fontSize=17.sp,fontWeight=FontWeight.ExtraBold,color=color)}}
+// 맞물린 두 고리. 작업자와 동료가 서로를 잡고 있다는 뜻
+@Composable fun BrandRings(modifier:Modifier=Modifier,ringA:Color=Color(0xFFFFC20E),ringB:Color=Brand){Canvas(modifier){val r=size.height*.37f;val w=size.height*.13f;val y=size.height/2;drawCircle(ringA,r,Offset(size.width/2-r*.46f,y),style=Stroke(w));drawCircle(ringB,r,Offset(size.width/2+r*.46f,y),style=Stroke(w))}}
+@Composable fun BrandMark(size:Int=28){Box(Modifier.size(size.dp).background(Brand,RoundedCornerShape((size*.3f).dp)),contentAlignment=Alignment.Center){BrandRings(Modifier.size(width=(size*.86f).dp,height=(size*.62f).dp),ringB=Color.White)}}
+@Composable fun SLField(label:String,value:String,onValue:(String)->Unit,placeholder:String="",singleLine:Boolean=true,modifier:Modifier=Modifier){Column(verticalArrangement=Arrangement.spacedBy(6.dp),modifier=modifier){Text(label,fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted);OutlinedTextField(value,onValue,modifier=Modifier.fillMaxWidth().heightIn(min=54.dp),placeholder={Text(placeholder,fontSize=17.sp,color=Color(0xFF667384))},singleLine=singleLine,minLines=if(singleLine)1 else 3,shape=RoundedCornerShape(12.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedBorderColor=Line,focusedBorderColor=Brand,unfocusedContainerColor=Color.White,focusedContainerColor=Color.White),textStyle=MaterialTheme.typography.bodyLarge.copy(fontSize=17.sp,color=Ink))}}
+@Composable fun PageHeading(eyebrow:String,title:String,subtitle:String?=null){Column(verticalArrangement=Arrangement.spacedBy(4.dp)){Text(eyebrow,fontSize=14.sp,color=Muted,fontWeight=FontWeight.Bold);Text(title,fontSize=26.sp,lineHeight=34.sp,color=Ink,fontWeight=FontWeight.ExtraBold,letterSpacing=(-.5).sp);if(subtitle!=null)Text(subtitle,fontSize=16.sp,lineHeight=25.sp,color=Muted)}}
+@Composable fun SectionHeading(title:String,action:String?=null,onAction:()->Unit={}){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){Text(title,fontSize=18.sp,fontWeight=FontWeight.ExtraBold,color=Ink);if(action!=null)TextButton(onAction,contentPadding=PaddingValues(horizontal=0.dp)){Text(action,fontSize=14.sp,color=Muted);Spacer(Modifier.width(3.dp));SLIcon("chevron",Modifier.size(14.dp),Muted)}}}
+@Composable fun Avatar(name:String,size:Int=44){Box(Modifier.size(size.dp).background(Color(0xFFDCE6F5),CircleShape),contentAlignment=Alignment.Center){Text(name.take(1),fontSize=(size*.4).sp,fontWeight=FontWeight.ExtraBold,color=Brand)}}
 @Composable fun SmallNote(text:String,amber:Boolean=false){Row(Modifier.fillMaxWidth().background(if(amber)PaleAmber else BrandSoft,RoundedCornerShape(12.dp)).padding(12.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
  SLIcon(if(amber)"report" else "info",Modifier.size(16.dp),if(amber)Amber else Brand)
  Text(text,fontSize=14.sp,lineHeight=21.sp,color=if(amber)Amber else Brand)
 }}
-@Composable fun DetailRow(label:String,value:String){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){Text(label,fontSize=14.sp,color=Muted);Text(value,fontSize=15.sp,fontWeight=FontWeight.SemiBold,color=Ink,maxLines=2)}}
-@Composable fun MenuRow(icon:String,title:String,subtitle:String?=null,onClick:()->Unit){Row(Modifier.fillMaxWidth().clickable(onClick=onClick).padding(vertical=11.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+@Composable fun DetailRow(label:String,value:String){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically){Text(label,fontSize=16.sp,color=Muted);Text(value,Modifier.weight(1f),fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink,maxLines=2,textAlign=TextAlign.End)}}
+@Composable fun MenuRow(icon:String,title:String,subtitle:String?=null,onClick:()->Unit){Row(Modifier.fillMaxWidth().heightIn(min=62.dp).clickable(onClick=onClick).padding(vertical=9.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
  Box(Modifier.size(40.dp).background(CanvasColor,RoundedCornerShape(12.dp)),contentAlignment=Alignment.Center){SLIcon(icon,Modifier.size(20.dp))}
- Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(title,fontSize=15.sp,fontWeight=FontWeight.SemiBold,color=Ink);if(subtitle!=null)Text(subtitle,fontSize=13.sp,color=Muted,lineHeight=20.sp)}
+ Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(title,fontSize=17.sp,fontWeight=FontWeight.Bold,color=Ink);if(subtitle!=null)Text(subtitle,fontSize=14.sp,color=Muted,lineHeight=21.sp)}
  SLIcon("chevron",Modifier.size(17.dp),Muted)
 }}
 @Composable fun EmptyState(icon:String,title:String,detail:String){Column(Modifier.fillMaxWidth().padding(vertical=22.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(10.dp)){Box(Modifier.size(48.dp).background(CanvasColor,CircleShape),contentAlignment=Alignment.Center){SLIcon(icon,tint=Muted)};Text(title,fontSize=15.sp,fontWeight=FontWeight.SemiBold,color=Ink);Text(detail,fontSize=14.sp,lineHeight=21.sp,color=Muted)}}
@@ -106,7 +132,7 @@ private val iconPaths=mapOf(
 @Composable fun PhotoCapture(path:String?,onCapture:()->Unit){if(path!=null){PhotoPreview(path);TextButton(onCapture,Modifier.fillMaxWidth()){SLIcon("camera",Modifier.size(16.dp));Spacer(Modifier.width(6.dp));Text("사진 다시 촬영",fontSize=14.sp)}}else Surface(Modifier.fillMaxWidth().height(160.dp).clickable(onClick=onCapture),color=CanvasColor,shape=RoundedCornerShape(16.dp),border=BorderStroke(1.dp,Line)){
  Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Box(Modifier.size(44.dp).background(BrandSoft,CircleShape),contentAlignment=Alignment.Center){SLIcon("camera")};Spacer(Modifier.height(10.dp));Text("현장 사진 촬영",fontSize=15.sp,fontWeight=FontWeight.Bold,color=Brand);Spacer(Modifier.height(5.dp));Text("위험 위치와 주변이 잘 보이게 찍어 주세요.",fontSize=13.sp,color=Muted)}
 }}
-@Composable fun EmergencyStrip(onDial:()->Unit){Row(Modifier.fillMaxWidth().background(Danger).clickable(onClick=onDial).padding(horizontal=22.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)){
- SLIcon("phone",Modifier.size(20.dp),Color.White);Text("긴급 상황에는",fontSize=15.sp,fontWeight=FontWeight.Medium,color=Color.White);Spacer(Modifier.weight(1f))
+@Composable fun EmergencyStrip(onDial:()->Unit){Row(Modifier.fillMaxWidth().height(56.dp).background(Danger).clickable(onClick=onDial).padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){
+ Text("긴급 상황에는",fontSize=16.sp,fontWeight=FontWeight.Bold,color=Color.White)
  Box(Modifier.background(Color.White,RoundedCornerShape(12.dp)).padding(horizontal=16.dp,vertical=9.dp)){Text("119 전화",fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Danger)}
 }}

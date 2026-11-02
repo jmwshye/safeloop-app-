@@ -41,23 +41,24 @@ import androidx.compose.ui.window.DialogProperties
  BackHandler(enabled=page!=WorkerPage.TODAY&&sheet==null){navigate(WorkerPage.TODAY)}
  Surface(Modifier.fillMaxSize(),color=CanvasColor){Box(Modifier.fillMaxSize().safeDrawingPadding()){
   Scaffold(containerColor=CanvasColor,contentWindowInsets=WindowInsets(0,0,0,0),snackbarHost={SnackbarHost(snackbar)},topBar={
-   Row(Modifier.fillMaxWidth().height(70.dp).padding(horizontal=22.dp),verticalAlignment=Alignment.CenterVertically){
-    Box(Modifier.size(36.dp).background(BrandSoft,RoundedCornerShape(12.dp)),contentAlignment=Alignment.Center){SLIcon("link",Modifier.size(22.dp))};Spacer(Modifier.width(9.dp))
-    Column(Modifier.weight(1f)){Text("안전고리",fontSize=20.sp,fontWeight=FontWeight.ExtraBold,color=Ink,letterSpacing=(-.7).sp)}
-    Box(Modifier.clickable{navigate(WorkerPage.PROFILE)}){SLPill(if(state.preview)"체험 모드" else if(state.connectionProblem!=null)"연결 미확인" else "현장 연결",amber=state.preview)}
-    IconButton({open("requests")}){Box{SLIcon("bell",tint=Ink,description="안전 확인 알림");if(state.activeCalls.isNotEmpty())Box(Modifier.align(Alignment.TopEnd).size(6.dp).background(Amber,CircleShape))}}
+   Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+    BrandMark();Text("안전고리",Modifier.weight(1f),fontSize=18.sp,fontWeight=FontWeight.ExtraBold,color=Ink)
+    if(state.preview)SLPill("체험 모드",amber=true)
+    if(state.connectionProblem!=null)SLPill("연결 미확인",amber=true)else if(state.currentShift!=null)SLPill("근무 중")else if(state.todayShift==null)SLPill("출근 전",neutral=true)else SLPill("퇴근 완료",neutral=true)
+    IconButton({open("requests")}){Box{SLIcon("bell",tint=Ink,description="안전 확인 알림");if(state.activeCalls.isNotEmpty())Box(Modifier.align(Alignment.TopEnd).size(8.dp).background(Danger,CircleShape))}}
    }
   },bottomBar={Column {
    EmergencyStrip(actions.dial)
-   Row(Modifier.fillMaxWidth().background(Color.White).border(BorderStroke(.5.dp,Line)),horizontalArrangement=Arrangement.SpaceEvenly){WorkerPage.entries.forEach{destination->Column(Modifier.weight(1f).height(66.dp).clickable{navigate(destination)},horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
-    Box(Modifier.size(width=39.dp,height=29.dp).background(if(page==destination)BrandSoft else Color.Transparent,RoundedCornerShape(11.dp)),contentAlignment=Alignment.Center){SLIcon(destination.icon,Modifier.size(21.dp),if(page==destination)Brand else Muted)}
-    Spacer(Modifier.height(4.dp));Text(destination.label,fontSize=13.sp,fontWeight=if(page==destination)FontWeight.Bold else FontWeight.Medium,color=if(page==destination)Brand else Muted)
+   HorizontalDivider(color=Line)
+   Row(Modifier.fillMaxWidth().background(Color.White)){WorkerPage.entries.forEach{destination->Column(Modifier.weight(1f).height(68.dp).clickable{navigate(destination)},horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp,Alignment.CenterVertically)){
+    SLIcon(destination.icon,tint=if(page==destination)Brand else Muted)
+    Text(destination.label,fontSize=13.sp,fontWeight=if(page==destination)FontWeight.ExtraBold else FontWeight.Medium,color=if(page==destination)Brand else Muted)
    }}}
   }}){padding->Column(Modifier.padding(padding)){
    if(state.connectionProblem!=null){SmallNote("서버 연결 미확인 · ${state.connectionProblem}",amber=true);TextButton(controller::refreshNow){Text("다시 시도")}}
    if(!state.preview&&controller.pendingWrites>0)SmallNote("서버 저장 대기 · ${controller.pendingWrites}건",amber=true)
    if(controller.busy)LinearProgressIndicator(Modifier.fillMaxWidth(),color=Brand,trackColor=BrandSoft)
-   key(page){Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start=22.dp,end=22.dp,top=12.dp,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
+   key(page){Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start=20.dp,end=20.dp,top=6.dp,bottom=16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
     when(page){
      WorkerPage.TODAY->HomePage(state,controller.now,::open,::navigate,actions.monitor,actions.checkLocation)
      WorkerPage.REPORT->ReportPage(state,controller.busy,actions,controller::submitRisk,::open,controller::loadMoreRisks)

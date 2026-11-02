@@ -1,15 +1,20 @@
 package com.safeloop.app
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 // 0-1 ~ 0-5. Returning workers can reuse an existing membership.
 @Composable
@@ -31,24 +36,37 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
             controller.feedback?.let { SmallNote(it, amber = true) }
             when (stage) {
                 "welcome" -> {
-                    PageHeading("안전고리", "내 근로와 안전을,\n내가 기록해요.", "출퇴근과 동료 확인을 기록하고, 이상 신호가 생기면 도움을 요청해요.")
+                    Box(Modifier.fillMaxWidth().height(230.dp).background(BrandSoft, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
+                        BrandRings(Modifier.size(width = 190.dp, height = 120.dp))
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("안전고리", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+                        Text("내 근로와 안전을, 내가 기록해요.", fontSize = 18.sp, color = Muted)
+                    }
+                    SLCard {
+                        Text("출근 한 번으로 근로 기록이 남아요", fontSize = 16.sp, color = Ink)
+                        HorizontalDivider(color = Line)
+                        Text("동료와 서로 확인하고 사진으로 남겨요", fontSize = 16.sp, color = Ink)
+                        HorizontalDivider(color = Line)
+                        Text("쓰러지면 동료와 반장님께 알려요", fontSize = 16.sp, color = Ink)
+                    }
                     SLButton("시작하기", { controller.beginOnboarding("signup") })
                     SLButton("체험 먼저 해보기", controller::usePreview, secondary = true)
-                    SLButton("이미 계정이 있어요 · 로그인", { controller.beginOnboarding("login") }, secondary = true)
+                    GhostButton("이미 계정이 있어요 · 로그인", { controller.beginOnboarding("login") })
                 }
                 "signup", "login" -> key(stage) {
                     val signup = stage == "signup"
                     var name by rememberSaveable { mutableStateOf("") }
                     var email by rememberSaveable { mutableStateOf("") }
                     var password by remember { mutableStateOf("") }
-                    PageHeading("계정", if (signup) "계정을 만들어요" else "다시 만나서 반가워요", "근로·안전 기록은 이 계정에 남아요.")
+                    PageHeading(if (signup) "가입 1 / 4" else "로그인", if (signup) "계정을 만들어요" else "다시 만나서 반가워요", "내 근로 기록의 주인은 나예요. 기록은 이 계정에 남아요.")
                     if (signup) SLField("이름", name, { name = it })
                     SLField("이메일", email, { email = it }, "name@example.com")
                     OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true,
                         visualTransformation = PasswordVisualTransformation(), label = { Text(if (signup) "비밀번호 · 12~20자" else "비밀번호") })
                     SLButton(if (signup) "다음" else "로그인", { controller.authenticate(email, password, name, signup) },
                         enabled = !busy && email.isNotBlank() && password.isNotBlank() && (!signup || (password.length in 12..20 && name.isNotBlank())))
-                    SLButton(if (signup) "이미 계정이 있어요" else "처음 이용해요", { controller.beginOnboarding(if (signup) "login" else "signup") }, secondary = true)
+                    GhostButton(if (signup) "이미 계정이 있어요" else "처음 이용해요", { controller.beginOnboarding(if (signup) "login" else "signup") })
                 }
                 "sites" -> {
                     PageHeading("현장", "근무할 현장을 선택해요", "참여한 현장은 코드를 다시 입력할 필요가 없어요.")
