@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="504" viewBox="0 0 1120 504" role="img" aria-labelledby="title description">
+  <title id="title">이상 감지와 긴급 대응</title>
+  <desc id="description">충격 감지 → 15초 안에 본인 ‘괜찮아요’ 응답 시 종료. 도움 요청·무응답 → 지정 동료·반장 호출. 직접 도움 요청 → 즉시 호출. 미수락 → 같은 구역 동료에게 30초마다 한 명씩 확대. 수락자: 도착 → 상태 관찰 → 종료 사유 기록. 후보 소진 시 당사자·반장 재호출 가능.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#697b8e"/>
+    </marker>
+  </defs>
+  <rect width="1120" height="504" rx="18" fill="#101215"/>
+  <g fill="none" stroke="#697b8e" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow)">
+    <path d="M214 97 H303"/>
+    <path d="M473 97 H590"/>
+    <path d="M388 170 V228"/>
+    <path d="M214 270 H282"/>
+    <path d="M494 270 H590"/>
+    <path d="M798 270 H896"/>
+    <path d="M388 312 V398"/>
+    <path d="M494 418 H682 Q694 418 694 406 V312"/>
+    <path d="M494 458 H896"/>
+  </g>
+  <g fill="#1d2229" stroke="#39424e" stroke-width="1.3">
+    <rect x="32" y="55" width="182" height="84" rx="12"/>
+    <path d="M388 24 L473 97 L388 170 L303 97 Z" stroke="#5b6c7d"/>
+    <rect x="32" y="228" width="182" height="84" rx="12"/>
+    <rect x="282" y="228" width="212" height="84" rx="12"/>
+    <rect x="590" y="228" width="208" height="84" rx="12"/>
+    <rect x="282" y="398" width="212" height="84" rx="12"/>
+    <rect x="896" y="398" width="192" height="84" rx="12"/>
+  </g>
+  <g fill="#18342b" stroke="#396956" stroke-width="1.3">
+    <rect x="590" y="55" width="208" height="84" rx="12"/>
+    <rect x="896" y="228" width="192" height="84" rx="12"/>
+  </g>
+  <g font-family="Pretendard, 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif" text-anchor="middle">
+    <g fill="#aab3bf" font-size="15" font-weight="400">
+      <text x="531" y="84">괜찮아요</text>
+      <text x="402" y="202" text-anchor="start">도움 필요 · 무응답</text>
+      <text x="542" y="257">한 명 수락</text>
+      <text x="402" y="360" text-anchor="start">수락 없음</text>
+      <text x="578" y="405">한 명 수락</text>
+      <text x="695" y="449">후보 소진</text>
+    </g>
+    <g fill="#e4e9ef" font-size="20" font-weight="500">
+      <text x="123" y="94">강한 충격 감지</text>
+      <text x="388" y="94">본인 확인</text>
+      <text x="123" y="277">직접 도움 요청</text>
+      <text x="388" y="266">동료·반장 호출</text>
+      <text x="694" y="266">도착 · 상태 관찰</text>
+      <text x="388" y="436">같은 구역 추가 호출</text>
+      <text x="992" y="436">수락자 없음</text>
+    </g>
+    <g fill="#b8f0d7" font-size="20" font-weight="500">
+      <text x="694" y="104">사건 종료</text>
+      <text x="992" y="266">대응 완료</text>
+    </g>
+    <g fill="#a9b3bd" font-size="14" font-weight="400">
+      <text x="123" y="119">근무 중 앱 센서</text>
+      <text x="388" y="118">15초</text>
+      <text x="388" y="293">근무 중 지정 동료 + 반장</text>
+      <text x="694" y="293">반장에게 상태 알림</text>
+      <text x="992" y="293">종료 사유 기록</text>
+      <text x="388" y="463">30초마다 한 명씩</text>
+      <text x="992" y="463">당사자·반장 재호출 가능</text>
+    </g>
+  </g>
+</svg>

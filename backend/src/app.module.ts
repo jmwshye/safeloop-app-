@@ -15,6 +15,7 @@ import { SitesModule } from './sites/sites.module.js';
 import { RecordsModule } from './records/records.module.js';
 import { IncidentModule } from './incidents/incident.module.js';
 import { RisksModule } from './risks/risks.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 import { HealthController } from './health.controller.js';
 
 @Module({
@@ -26,6 +27,7 @@ import { HealthController } from './health.controller.js';
     RecordsModule,
     IncidentModule,
     RisksModule,
+    ReportsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

@@ -529,6 +529,66 @@
 - **요청** 반장이 `status`(`accepted` 승인 / `declined` 반려)와 `note`(1~1,000자) 전송.
 - **응답** `correction`. 검토 결과를 새 이벤트로 추가. 원본 연결은 `correctsId`.
 
+## 보고서
+
+- **기간** `?month=2026-11`. 월을 생략하면 한국 기준 이번 달. 근로 보고서는 월 대신 `from`과 `to`를 함께 전송 가능(양 끝 포함 최대 366일).
+- **다운로드** 근로·월간·개별 사고 보고서는 기본 JSON. `format=csv` / `format=pdf` → 파일 응답. 파일명은 `Content-Disposition` 헤더에서 확인
+
+**내 근로 보고서** · `GET /reports/work`
+
+- **범위** 내가 일한 모든 현장.
+- **응답** `period`, `shifts`(출퇴근 기록), `summary`(합계), `events`, `corrections`, `dataGaps`.
+
+| `summary` 필드 | 뜻 |
+| --- | --- |
+| `workerDays` | 근로일 수 |
+| `workedMinutes` | 퇴근까지 기록된 근무 시간 합계(분) |
+| `expectedWageTotal` | 예상 일당 합계(원). 모두 미입력이면 `null` |
+
+**현장별 근로 보고서** · `GET /sites/{siteId}/reports/work`
+
+- **조회 대상** 기본은 본인. 반장은 `userId`로 한 명 / `scope=all`로 전체 작업자 선택. 두 조건 동시 전송 시 `400`.
+- **응답** 내 근로 보고서와 같은 형식.
+- **전체 다운로드 예** `GET /sites/{siteId}/reports/work?month=2026-11&scope=all&format=csv`
+
+**현장 월간 집계** · `GET /sites/{siteId}/reports/monthly`
+
+- **요청** 반장 전용. `month` 선택.
+- **응답** `summary`(현장 합계), `workers`(작업자별 합계), `dailyRecords`(일별 기록), `period`, `events`, `corrections`, `dataGaps`.
+
+| 안전 확인 집계 필드 | 근로일 수 기준 · 현장·작업자 합계 공통 |
+| --- | --- |
+| `mutualChecks` | 사진 없는 확인을 포함한 교차 확인 완료 |
+| `photoConfirmedChecks` | 사진으로 교차 확인 완료 |
+| `statementOnlyChecks` | 교차 확인 완료 중 사진 확인까지 완료하지 않은 경우 |
+
+**사고 보고서 목록** · `GET /sites/{siteId}/reports/incidents`
+
+- **요청** `month`, `offset`, `limit` 선택. 기본 30건, 최대 100건.
+- **응답** `period`, `incidents[]`, `nextOffset`. 종료된 사건 포함. 당사자는 본인 사건, 반장은 현장 전체 사건.
+
+**개별 사고 보고서** · `GET /sites/{siteId}/reports/incidents/{id}`
+
+- **권한** 사건 당사자·현장 반장.
+- **응답** `incident`와 `generatedAt`, `events`, `corrections`, `dataGaps`, `disclaimer`. 원시 센서 표본과 GPS 좌표는 제외.
+
+| `incident` 필드 | 뜻 |
+| --- | --- |
+| `recipients` | 호출 대상과 수신·응답 기록 |
+| `dialerOpenedAt` | 119 전화 화면을 연 시각 목록 |
+| `scenePhotoId` | 첨부한 현장 사진 ID. 있으면 PDF에 사진 포함 |
+| `ppeEvidence` | 사고 전 보호구 교차 확인 증빙. 사진은 PDF에도 포함 |
+
+| `ppeEvidence` 필드 | 의미 |
+| --- | --- |
+| `status` | `photo_confirmed` 사진 확인 · `statement_only` 사진 없는 확인 포함 · `mismatch` 불일치 · `incomplete` 증빙 부족 |
+| `checks[]` | 확인자 `photographer`, 대상자 `subject`, 원본 사건 `eventId`, 서버 수신 시각 `serverReceivedAt`, 결과 `outcome`, 증빙 `evidence`, 사진 `photoId` |
+| `checks[].evidence` | `photo` 사진 · `statement` 진술 · `missing_check` 확인 기록 없음 · `missing_photo` 사진 증빙 없음 |
+
+- `basis=completed_before_incident` · 사고 전 가장 최근 교차 확인 완료 증빙. `status`는 완료 당시 상태, `completedAt`은 완료 시각. 짝 변경 후에도 보존. 완료 후부터 사고 전까지의 확인·불일치는 `subsequentChecks[]`로 구분
+- `basis=latest_check_before_incident` · 완료 증빙 없음 → 사고 당시 동료와의 마지막 확인 상태 표시. `completedAt=null`
+- 사고 이후 확인은 제외. 부족한 증빙은 `dataGaps`에도 표시.
+
 ## 공통 오류
 
 ```json
