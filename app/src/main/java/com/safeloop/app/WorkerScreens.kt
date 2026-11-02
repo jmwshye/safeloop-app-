@@ -151,9 +151,10 @@ fun callStatus(c:WorkerCall,uid:String)=if(c.status=="closed")"안전 확인 완
 @Composable fun ProfilePage(s:WorkerState,onSheet:(String)->Unit,onSettings:()->Unit){
  PageHeading("MY SAFELOOP","나의 안전고리","기록의 첫 번째 주인은 나입니다.")
  SLCard {Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(15.dp)){Avatar(s.name,60);Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(s.name,fontSize=23.sp,fontWeight=FontWeight.Bold,color=Ink);Text(s.job,fontSize=12.sp,color=Muted)};SLPill(if(s.preview)"체험 모드" else "현장 연결",amber=s.preview)};HorizontalDivider(color=Line);DetailRow("나의 현장",s.site);DetailRow("작업 구역",s.zone)}
- SLCard {MenuRow("person","내 작업 정보","이름 · 작업 구역 · 예상 일당"){onSheet("profile")}}
+ SLCard {MenuRow("person","내 작업 정보","이름 · 작업 구역 · 예상 일당"){onSheet("profile")};HorizontalDivider(color=Line);MenuRow("link",if(s.preview)"실제 현장 연결하기" else "연결한 현장 정보",if(s.preview)"관리자의 참여 코드로 시작하세요" else "참여 코드 ${s.code}"){onSheet(if(s.preview)"connect" else "site")};HorizontalDivider(color=Line);MenuRow("bell","알림 설정","본인 확인과 동료 요청을 놓치지 않도록"){onSettings()}}
  SLCard {MenuRow("shield","기록과 개인정보","수집하는 정보와 확인 기록 안내"){onSheet("privacy")};HorizontalDivider(color=Line);MenuRow("info","안전 감지 이용 안내","휴대 위치 · 감지의 한계 · 긴급 연락"){onSheet("guide")}}
  if(s.preview){SectionHeading("앱 체험 도구");SLCard {Text("실제 센서 감시와 앱의 확인 흐름을 시험할 수 있어요. 아래 시험 신호는 다른 사람에게 전송되지 않습니다.",fontSize=12.sp,lineHeight=19.sp,color=Muted);MenuRow("activity","본인 확인 알림 체험","15초 응답 대기와 무응답 흐름"){onSheet("simulate-self")};HorizontalDivider(color=Line);MenuRow("people","동료 현장 확인 체험","수락 → 현장 도착 → 주변 사진 제출"){onSheet("simulate-peer")};TextButton({onSheet("reset")}){Text("체험 기록 초기화",fontSize=12.sp,color=Muted)}}}
+ else SLCard {MenuRow("logout","연결을 종료하고 체험 모드로","서버 기록은 그대로 보존됩니다"){onSheet("disconnect")};if(BuildConfig.DEBUG)MenuRow("activity","개발용 서버 시험 신호","무응답 시 실제 현장 구성원에게 알림"){onSheet("simulate-self")}}
  Row(Modifier.fillMaxWidth().padding(top=8.dp,bottom=16.dp),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){SLIcon("link",Modifier.size(15.dp),Muted);Spacer(Modifier.width(7.dp));Text("SAFELOOP  ·  안전은 서로 연결되어 있습니다.",fontSize=10.sp,color=Muted)}
 }
 

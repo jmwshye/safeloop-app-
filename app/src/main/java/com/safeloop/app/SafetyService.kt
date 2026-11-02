@@ -31,7 +31,7 @@ class SafetyService:Service(),SensorEventListener {
   getSharedPreferences("safeloop",MODE_PRIVATE).edit().putBoolean("monitoring",true).apply()
  }
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
-  if(intent?.action=="STOP")stopSelf()
+  if(intent?.action=="STOP"){if(getSharedPreferences("safeloop",MODE_PRIVATE).getBoolean("previewMonitoring",false))stopSelf()else scope.launch{runCatching{Repository(this@SafetyService).command("monitoring",mapOf("enabled" to false))};stopSelf()}}
   return START_NOT_STICKY
  }
  override fun onSensorChanged(e:SensorEvent){
@@ -48,7 +48,15 @@ class SafetyService:Service(),SensorEventListener {
     scope.launch{delay(15000);if(prefs.getString("ackAlert",null)!=localId)notifySelf(null,"체험: 본인 무응답으로 동료 확인 대기 단계입니다. 다른 사람에게 실제 전송하지 않습니다.",localId)}
     return
    }
-
+   notifySelf(null,"움직임 변화가 감지되었습니다. 괜찮으세요? 서버 연결 중…",localId)
+   scope.launch{
+    val result=runCatching{withTimeout(10000){Repository(this@SafetyService).command("signal")}}
+    val call=result.getOrNull()?.get("callId") as? String
+    if(call!=null){
+     if(prefs.getString("ackAlert",null)==localId){Repository(this@SafetyService).queue("call_response",mapOf("callId" to call,"response" to "safe"))}
+     else{prefs.edit().putString("localCallId",call).apply();notifySelf(call,if(result.getOrNull()?.get("stage")=="peer")"동료의 현장 확인이 진행 중입니다." else "15초 안에 안전 상태를 확인해 주세요.",localId)}
+    }else if(prefs.getString("ackAlert",null)!=localId)notifySelf(null,"서버 연결 실패 · 동료 호출 여부를 확인할 수 없습니다. 직접 연락하세요.",localId)
+   }
   }
  }
  private fun notifySelf(call:String?,body:String,localId:String?=null){

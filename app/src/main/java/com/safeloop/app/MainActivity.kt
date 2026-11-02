@@ -70,7 +70,7 @@ class MainActivity:ComponentActivity(){
   val bitmap=if(degrees==0f)original else Bitmap.createBitmap(original,0,0,original.width,original.height,Matrix().apply{postRotate(degrees)},true)
   file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.JPEG,85,it)};if(bitmap!==original)bitmap.recycle();original.recycle();return file.path
  }
- private fun attend(){controller.checkIn()}
+ private fun attend(){if(controller.state.preview){controller.checkIn();return};if(ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED&&ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED)locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION))else controller.checkIn(lastLocation())}
  private fun lastLocation():Map<String,Any?>?=runCatching{val manager=getSystemService(LOCATION_SERVICE) as LocationManager;manager.getProviders(true).mapNotNull{manager.getLastKnownLocation(it)}.filter{System.currentTimeMillis()-it.time<120000}.maxByOrNull{it.time}?.let{mapOf("lat" to it.latitude,"lng" to it.longitude,"accuracy" to it.accuracy.toDouble())}}.getOrNull()
  private fun dial(){controller.emergency();runCatching{startActivity(Intent(Intent.ACTION_DIAL,Uri.parse("tel:119")))}.onFailure{controller.feedback="전화 앱을 열 수 없습니다. 다른 전화로 119에 연락해 주세요."}}
  private fun notificationSettings(){runCatching{startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName))}.onFailure{controller.feedback="기기 설정에서 안전고리의 알림을 허용해 주세요."}}
