@@ -413,6 +413,16 @@ test(
           ).length,
           1,
         );
+        const report = await ok(
+          worker,
+          '/sites/' + siteId + '/reports/incidents/' + caseId,
+        );
+        assert.equal(
+          report.events.filter(
+            (e) => e.type === 'incident.verification_overdue',
+          ).length,
+          1,
+        );
         assert.equal(
           (
             await req(accepted, path('/resolution'), 'PUT', {
