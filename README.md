@@ -14,8 +14,8 @@
 | --- | --- | --- |
 | 작업자 앱 초안 | `main` | 단일 화면 시제품. 이름·위치가 코드에 고정 |
 | 작업자 앱 최신 | `feat/app-worker-experience` | 5개 탭, 체험 모드, 안전 확인 흐름. PR 없음 |
-| 백엔드 | `taegyu/*` (PR #2~#5) | NestJS·PostgreSQL. 인증·출근·점검·상태 확인 |
-| 관리자 웹·Firebase 함수 | [jmwshye/safeloop](https://github.com/jmwshye/safeloop) | 모의 데이터 시연. 실제 Firebase 미배포 |
+| 서버 | `taegyu/*` (PR #2~#5) | NestJS·PostgreSQL로 통일 합의. 인증·출근·점검·상태 확인 구현, 안전 호출 등은 이식 예정 |
+| 관리자 웹 | [jmwshye/safeloop](https://github.com/jmwshye/safeloop) | 모의 데이터 시연. NestJS API 연결로 바꿀 예정 |
 
 실기기 센서 정확도, 기기 간 알림, 실제 서버 통합은 아직 검증하지 않았습니다. 현황과 결정할 내용은 [docs/STATUS.md](docs/STATUS.md)를 보세요.
 

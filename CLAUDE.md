@@ -25,7 +25,7 @@
 | 백엔드 | `origin/taegyu/ci/backend-checks` (PR #2~#5가 차례로 쌓임) |
 | 관리자 웹·Firebase 함수 | 별도 저장소 `jmwshye/safeloop` |
 
-서버는 아직 Firebase와 NestJS 중 하나로 정해지지 않았다. 결정 전에는 어느 한쪽을 기준으로 앱 연동 코드를 작성하지 않는다.
+서버는 NestJS(`backend/`)로 통일하기로 합의했다(2026-11-02). Firebase는 푸시(FCM)에만 쓴다. 앱의 Firebase 직접 호출(`Repository.kt`)은 서버 이식이 끝나고 `backend/API.md`에 새 API가 정해지기 전에는 바꾸지 않는다. 앱 화면 작업은 체험 모드에서 계속한다.
 
 ## 제품 규칙
 
