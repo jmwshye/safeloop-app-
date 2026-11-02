@@ -19,7 +19,11 @@ class Repository(context: Context) {
     private val context = context.applicationContext
     private val sessions = NestSessionStore(this.context)
     val prefs = this.context.getSharedPreferences("safeloop", Context.MODE_PRIVATE)
-    private val http get() = NestHttp(BuildConfig.API_BASE_URL, BuildConfig.DEBUG)
+    private val http get() = NestHttp(serverUrl, BuildConfig.DEBUG)
+    /** 개발 빌드에서만 앱을 다시 만들지 않고 서버 주소를 바꿀 수 있다. 정식 빌드는 빌드할 때 정한 주소만 쓴다. */
+    var serverUrl: String
+        get() = prefs.getString("apiUrlOverride", null)?.takeIf { BuildConfig.DEBUG } ?: BuildConfig.API_BASE_URL
+        set(value) { check(BuildConfig.DEBUG && !hasSession); prefs.edit().putString("apiUrlOverride", value).commit() }
     val currentUser: SessionUser? get() = sessions.read()?.user
     val hasSession: Boolean get() = currentUser != null
     internal val sessionId: String? get() = sessions.read()?.id

@@ -94,6 +94,9 @@ class MainActivity:ComponentActivity(){
  override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);handleIntent(intent)}
  override fun onResume(){super.onResume();if(::controller.isInitialized)controller.refreshMonitoring()}
  private fun handleIntent(intent:Intent){
+  // 긴급 알림으로 열 때만 잠금 화면 위에 띄운다. 평소 기록은 잠금을 풀어야 보인다.
+  val urgent=intent.getBooleanExtra("alert",false)||intent.getBooleanExtra("peerAlert",false)
+  if(Build.VERSION.SDK_INT>=27){setShowWhenLocked(urgent);setTurnScreenOn(urgent)}
   val matches=controller.acceptsNotification(intent.getStringExtra("siteId"),intent.getStringExtra("recipientId"))
   if(intent.getBooleanExtra("dial119",false)){intent.removeExtra("dial119");dial(intent.getStringExtra("callId"),matches);return}
   if(matches)intent.getStringExtra("notificationType")?.let{controller.openNotice(it,intent.getStringExtra("entityId"))}

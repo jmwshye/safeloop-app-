@@ -4,6 +4,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WorkerFlowTest {
+ @Test fun highRiskCodesAreShownInKorean(){assertEquals("비계 위 작업",highRiskLabel("scaffold"));assertEquals("고소작업대 작업",highRiskLabel("aerial_lift"));assertEquals("",highRiskLabel(null))}
+ @Test fun timelineNeverShowsRawResponseCodes(){listOf("safe","help","accepted","arrived","declined","retry","observe:conscious","finish:no_help_needed").forEach{assertFalse(it,responseLabel(it).any{c->c in 'a'..'z'})}}
  @Test fun attendanceDoesNotRequireSafetyChecklist(){val before=WorkerState();val after=before.attend();assertEquals(0,after.checkCount);assertNotNull(after.currentShift);assertEquals(180000,after.currentShift!!.wage);assertThrows(IllegalArgumentException::class.java){after.attend()}}
  @Test fun checkoutCompletesWorkEvenWhenChecksAreMissing(){val started=WorkerState(monitoring=true).attend();val finished=started.checkout();assertNull(finished.currentShift);assertNotNull(finished.todayShift!!.end);assertFalse(finished.monitoring);assertEquals(0,finished.checkCount)}
  @Test fun unknownAndNeedsAttentionStillCountAsAnswered(){
