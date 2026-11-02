@@ -49,6 +49,7 @@ import androidx.compose.ui.window.DialogProperties
    key(page){Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start=22.dp,end=22.dp,top=12.dp,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
     when(page){
      WorkerPage.TODAY->HomePage(state,controller.now,::open,::navigate,actions.monitor)
+     WorkerPage.SAFETY->SafetyPage(state,::open,actions.monitor)
      WorkerPage.RECORDS->RecordsPage(state,actions.export,::open)
      WorkerPage.PROFILE->ProfilePage(state,::open,actions.notificationSettings)
     }
@@ -61,6 +62,8 @@ import androidx.compose.ui.window.DialogProperties
   when {
    activeSheet=="attendance"->{SmallNote(if(state.preview)"체험 모드의 출근 기록은 이 기기에 저장됩니다." else "현재 위치로 현장 출근을 확인해요. 위치 권한이 필요할 수 있습니다.");DetailRow("현장",state.site);DetailRow("작업 구역",state.zone);DetailRow("예상 일당","${moneyText(state.wage)}원");DetailRow("현재 시각",clockText(controller.now));Text("안전점검을 아직 마치지 않아도 출근 기록을 남길 수 있어요.",fontSize=13.sp,lineHeight=21.sp,color=Muted);SLButton("출근 기록 저장",{actions.attend();sheet=null},enabled=!controller.busy,icon="check")}
    activeSheet=="checkout"->{SmallNote("오늘도 수고하셨습니다. 퇴근하면 움직임 감시도 종료돼요.");DetailRow("출근 시각",clockText(state.currentShift?.start));DetailRow("퇴근 시각",clockText(controller.now));DetailRow("예상 일당","${moneyText(state.currentShift?.wage?:state.wage)}원");SLButton("퇴근하고 기록 마무리",{controller.checkOut();sheet=null;navigate(WorkerPage.RECORDS)},enabled=!controller.busy,icon="check")}
+   activeSheet=="checklist"->ChecklistSheet(state,controller.busy){values->controller.saveChecks(values);sheet=null}
+   activeSheet=="peer"->PeerSheet(state,controller.busy,actions.camera){observed,photo->controller.checkPeer(observed,photo);sheet=null}
    activeSheet=="profile"->EditProfileSheet(state){name,zone,wage->controller.saveWorkInfo(name,zone,wage);sheet=null}
    activeSheet=="site"->{SLPill("체험 현장",amber=true);Text(state.site,fontSize=23.sp,fontWeight=FontWeight.Bold,color=Ink);DetailRow("작업 구역",state.zone);SmallNote("체험 기록은 이 기기에 저장됩니다.")}
    activeSheet=="privacy"->{Text("기록의 첫 번째 주인은 작업자입니다.",fontSize=21.sp,fontWeight=FontWeight.Bold,color=Ink);Text("근로 기록과 직접 확인한 사실, 센서의 추정을 구분해 보관해요. 사진은 현장 확인과 위험 조치에 사용합니다.",fontSize=14.sp,lineHeight=24.sp,color=Muted);SmallNote(if(state.preview)"체험 모드의 근로·안전 기록과 사진은 이 기기에만 저장돼요. 실제 현장에 전송되지 않습니다." else "현장 연결 모드에서는 필요한 확인 상태를 같은 현장의 동료와 책임자에게 공유해요.");Text("위치는 출근 확인에 사용하며 상시 추적하지 않습니다. 119 버튼은 전화 화면을 열며 실제 통화 연결이나 신고 접수를 증명하지 않아요.",fontSize=14.sp,lineHeight=24.sp,color=Muted)}
@@ -87,6 +90,24 @@ private fun sheetTitle(route:String)=when{
    EmergencyStrip(onDial)
   }
  }
+}
+
+@Composable private fun ChecklistSheet(s:WorkerState,busy:Boolean,onSave:(List<String>)->Unit){var values by remember(s.checks){mutableStateOf(s.checks)}
+ SmallNote("모르면 책임자에게 물어보세요. 확인하지 않은 항목을 완료로 기록하지 않아요.")
+ listOf("추락 위험 구역과 동선을 확인했나요?","바닥·개구부·안전난간은 괜찮나요?","안전모·턱끈·안전대를 점검했나요?").forEachIndexed{i,title->Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
+  Text("0${i+1}",fontSize=11.sp,fontWeight=FontWeight.Bold,color=Forest);Text(title,fontSize=17.sp,fontWeight=FontWeight.Bold,color=Ink,lineHeight=25.sp)
+  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("확인","개선 필요","모름").forEach{v->val selected=values[i]==v;Surface(Modifier.weight(1f).height(48.dp).clickable{values=values.mapIndexed{index,old->if(index==i)v else old}},color=if(selected)PaleGreen else CanvasColor,shape=RoundedCornerShape(12.dp),border=BorderStroke(1.dp,if(selected)Forest else Line)){Box(contentAlignment=Alignment.Center){Text(v,fontSize=13.sp,fontWeight=if(selected)FontWeight.Bold else FontWeight.Normal,color=if(selected)Forest else Muted)}}}}
+ }}
+ SLButton("확인 내용 저장",{onSave(values)},enabled=!busy&&values.none{it.isBlank()},icon="check")
+}
+
+@Composable private fun PeerSheet(s:WorkerState,busy:Boolean,onPhoto:((String?)->Unit)->Unit,onSave:(String,String?)->Unit){var observed by remember{mutableStateOf("착용")};var photo by remember{mutableStateOf<String?>(null)}
+ Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)){Avatar(s.buddyName,56);Column(verticalArrangement=Arrangement.spacedBy(5.dp)){Text(s.buddyName,fontSize=21.sp,fontWeight=FontWeight.Bold,color=Ink);Text(s.buddyZone,fontSize=13.sp,color=Muted)}}
+ Text("동료의 보호구를 직접 보고 확인해 주세요.",fontSize=15.sp,fontWeight=FontWeight.SemiBold,color=Ink)
+ ChoiceTabs(listOf("착용 확인","개선 필요"),if(observed=="착용")0 else 1){observed=if(it==0)"착용" else "미착용"}
+ Text("확인 사진 · 선택",fontSize=13.sp,fontWeight=FontWeight.SemiBold,color=Ink);PhotoCapture(photo){onPhoto{if(it!=null)photo=it}}
+ SmallNote("이 화면은 작업 전 보호구 확인이에요. 긴급 현장 안전 확인은 별도 요청에서 도착과 주변 사진을 함께 기록합니다.")
+ SLButton(if(photo==null)"버튼으로 확인 저장" else "사진과 확인 저장",{onSave(observed,photo)},enabled=!busy,icon="check")
 }
 
 @Composable private fun EditProfileSheet(s:WorkerState,onSave:(String,String,Int)->Unit){var name by remember{mutableStateOf(s.name)};var zone by remember{mutableStateOf(s.zone)};var wage by remember{mutableStateOf(s.wage.toString())}
