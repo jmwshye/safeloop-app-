@@ -30,16 +30,28 @@ data class WorkerActions(
 )
 
 // 오늘 탭은 상태마다 화면이 하나다 (와이어프레임 7장). 호출 카드는 모든 상태에서 맨 위.
-@Composable fun HomePage(s:WorkerState,now:Long=System.currentTimeMillis(),onSheet:(String)->Unit={},onPage:(WorkerPage)->Unit={},onMonitoring:(Boolean)->Unit={},onLocation:()->Unit={}){
+@Composable fun HomePage(s:WorkerState,now:Long=System.currentTimeMillis(),onSheet:(String)->Unit={},onPage:(WorkerPage)->Unit={},onMonitoring:(Boolean)->Unit={},onLocation:()->Unit={},skippedTasks:Boolean=false,onSkip:()->Unit={},pinned:Boolean=false){
  s.activeCalls.forEach{CallSummary(it,s.uid){onSheet("call:${it.id}")}}
- var skippedTasks by rememberSaveable(s.todayShift?.id){mutableStateOf(false)}
- val tasksDone=s.checkCount==3&&s.peerChecked
  when{
   s.todayShift==null->TodayBeforeWork(s,onSheet,onLocation)
-  s.currentShift==null->TodayAfterWork(s,onSheet,onPage)
-  !tasksDone&&!skippedTasks&&!s.monitoring->TodayTasks(s,onSheet){skippedTasks=true}
+  s.currentShift==null->TodayAfterWork(s,onSheet)
+  showsTasks(s,skippedTasks)->TodayTasks(s,{route->{onSheet(route)}},onSkip)
   else->TodayWorking(s,now,onSheet,onMonitoring)
  }
+ if(!pinned)TodayAction(s,skippedTasks,onSheet,onPage)
+}
+
+private fun showsTasks(s:WorkerState,skipped:Boolean)=s.currentShift!=null&&!(s.checkCount==3&&s.peerChecked)&&!skipped&&!s.monitoring
+
+// 오늘 탭의 주 버튼 하나. 글자를 크게 써도 스크롤 없이 보이도록 하단 탭 위에 고정한다.
+@Composable fun TodayAction(s:WorkerState,skipped:Boolean,onSheet:(String)->Unit,onPage:(WorkerPage)->Unit){
+ val action: Pair<String,()->Unit> = when{
+  s.todayShift==null->"출근하기" to {onSheet("attendance")}
+  s.currentShift==null->"오늘의 기록 보기" to {onPage(WorkerPage.RECORDS)}
+  showsTasks(s,skipped)->if(s.checkCount==3)"동료 찍기" to {onSheet("peer")} else "3가지 확인하기" to {onSheet("checklist")}
+  else->return
+ }
+ Box(Modifier.fillMaxWidth().background(CanvasColor).padding(horizontal=20.dp,vertical=8.dp)){SLButton(action.first,action.second)}
 }
 
 // 1-1 오늘 · 출근 전
@@ -49,27 +61,25 @@ data class WorkerActions(
  SLCard(Modifier.clickable{onSheet("site")}){
   Text("오늘의 현장",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)
   Text(s.site,fontSize=21.sp,fontWeight=FontWeight.ExtraBold,color=Ink)
-  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){if(s.preview)SLPill("현장 안 · 체험 예시") else when(s.beforeLocation){"inside"->SLPill("현장 안에 있어요");"outside"->SLPill("현장 밖이에요",amber=true);else->SLPill("위치 미확인",neutral=true)};if(s.code.isNotBlank())SLPill("현장 코드 ${s.code}",neutral=true)}
+  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){if(s.preview)SLPill("현장 안 · 체험 예시") else when(s.beforeLocation){"inside"->SLPill("현장 안에 있어요");"outside"->SLPill("현장 밖이에요",amber=true);else->SLPill("위치 미확인",neutral=true)}}
  }
- FlatCard(listOf("오늘 할 일" to s.workOccupation,"작업 위치" to s.workZone,"예상 일당" to if(s.wageKnown)"${moneyText(s.wage)}원" else "미입력"))
+ FlatCard(listOfNotNull("오늘 할 일" to s.workOccupation,"작업 위치" to s.workZone,"예상 일당" to if(s.wageKnown)"${moneyText(s.wage)}원" else "미입력",("현장 코드" to s.code).takeIf{s.code.isNotBlank()}))
  Text("예상 일당은 내 기록용이에요. 실제 지급액과 다를 수 있어요. 작업 전 확인은 출근한 뒤에 해도 돼요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
  if(!s.preview)SLButton("현장 안인지 확인",onLocation,secondary=true,icon="pin")
- SLButton("출근하기",{onSheet("attendance")})
 }
 
 // 1-2 오늘 · 출근 완료
-@Composable private fun TodayTasks(s:WorkerState,onSheet:(String)->Unit,onSkip:()->Unit){
+@Composable private fun TodayTasks(s:WorkerState,onOpen:(String)->()->Unit,onSkip:()->Unit){
  val checksDone=s.checkCount==3;val left=(if(checksDone)0 else 1)+(if(s.peerChecked)0 else 1)
  PageHeading("${clockText(s.todayShift?.start)} 출근했어요","오늘 할 일이\n${left}가지 있어요")
  SLCard(color=BrandSoft){
-  TaskRow("1. 작업 전 3가지 확인","${s.checkCount} / 3 확인",checksDone){onSheet("checklist")}
+  TaskRow("1. 작업 전 3가지 확인","${s.checkCount} / 3 확인",checksDone,onOpen("checklist"))
   HorizontalDivider(color=Color(0xFFBCD3F7))
-  TaskRow("2. 동료와 서로 찍기","${s.buddyName} 님과 · 1분이면 끝나요",s.peerChecked){onSheet("peer")}
+  TaskRow("2. 동료와 서로 찍기","${s.buddyName} 님과 · 1분이면 끝나요",s.peerChecked,onOpen("peer"))
  }
  if(s.checks.any{it=="개선 필요"||it=="모름"})SmallNote("반장님 확인이 필요한 항목이 있어요.",amber=true)
  BuddySummary(s)
  Text("건너뛰어도 근무 기록은 그대로 남아요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
- if(checksDone)SLButton("동료 찍기",{onSheet("peer")}) else SLButton("3가지 확인하기",{onSheet("checklist")})
  GhostButton("건너뛰고 작업 시작",onSkip)
 }
 @Composable private fun TaskRow(title:String,detail:String,done:Boolean,onClick:()->Unit){Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(onClick=onClick),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
@@ -103,7 +113,7 @@ internal fun durationText(start:Long,end:Long):String{val minutes=((end-start)/6
 }
 
 // 퇴근 후
-@Composable private fun TodayAfterWork(s:WorkerState,onSheet:(String)->Unit,onPage:(WorkerPage)->Unit){
+@Composable private fun TodayAfterWork(s:WorkerState,onSheet:(String)->Unit){
  val shift=s.todayShift!!
  PageHeading(dateLabel(),"오늘도\n수고했어요")
  SLCard(color=BrandSoft){
@@ -114,7 +124,6 @@ internal fun durationText(start:Long,end:Long):String{val minutes=((end-start)/6
  }
  s.calls.filter{it.status=="closed"}.take(3).forEach{CallSummary(it,s.uid){onSheet("call:${it.id}")}}
  SLCard{if(s.events.isEmpty())EmptyState("records","오늘 남은 기록이 없어요","출근과 안전 확인이 여기에 쌓여요.")else s.events.take(4).forEach{EventRow(it,s.preview)}}
- SLButton("오늘의 기록 보기",{onPage(WorkerPage.RECORDS)})
 }
 
 fun callStatus(c:WorkerCall,uid:String)=if(c.serverStatus=="unanswered")"수락자 없음" else if(c.status=="closed")"안전 확인 완료" else if(c.status=="accepted")"현장 확인 진행 중" else if(c.stage=="self")"본인 응답 대기" else if(c.isSubject(uid))"동료 응답 대기" else "동료 확인 요청"

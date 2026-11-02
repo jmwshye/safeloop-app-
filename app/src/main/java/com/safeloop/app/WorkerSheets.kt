@@ -148,21 +148,23 @@ private val WarnInk=Color(0xFF5E3A00)
 }
 @Composable private fun CallingPeers(c:WorkerCall,s:WorkerState,now:Long,busy:Boolean,onDial:()->Unit,onPhone:(String)->Unit,onFailed:()->Unit,onRecord:()->Unit,onRespond:(String,String?)->Unit){
  SLPill("안전 미확인",amber=true,estimate=true)
+ // 촬영 중임을 알리고 바로 끌 수 있어야 하므로 맨 위에 둔다.
+ if(SituationRecorder.active){SLPill("영상 녹화 중 · 소리 없음",danger=true);GhostButton("녹화 끄기",{SituationRecorder.stop()})}
+ if(SafetyAlarm.beaconOn)GhostButton("사이렌·손전등 끄기",{SafetyAlarm.stop()})
  ScreenHead("동료를 부르고 있어요","안전 동료와 반장님께 알렸어요. 움직일 수 있으면 119를 누르세요.")
  FlatBox{
-  if(s.preview){CallRow(s.buddyName,"안전 동료","체험 · 실제 전송 안 됨");HorizontalDivider(color=Line);CallRow("반장님","현장 책임자 · 동시 통보","체험 · 실제 전송 안 됨");HorizontalDivider(color=Line);val wait=((c.deadline+30_000-now+999)/1000).coerceAtLeast(0);CallRow("같은 구역 동료",c.zone,if(wait>0)"${wait}초 뒤 요청" else "체험 · 호출 확대됨")}
+  if(s.preview){CallRow(s.buddyName,"안전 동료","체험");HorizontalDivider(color=Line);CallRow("반장님","현장 책임자 · 동시 통보","체험");HorizontalDivider(color=Line);val wait=((c.deadline+30_000-now+999)/1000).coerceAtLeast(0);CallRow("같은 구역 동료",c.zone,if(wait>0)"${wait}초 뒤" else "체험")}
   else if(c.recipients.isEmpty())StepRow("호출 대상을 확인하고 있어요"){SLPill("대기",neutral=true)}
   else c.recipients.forEachIndexed{i,recipient->if(i>0)HorizontalDivider(color=Line);CallRow(recipient.name,recipientRole(recipient.role),recipientStatus(recipient))}
  }
- if(SituationRecorder.active){SLPill("영상 녹화 중 · 소리 없음",danger=true);GhostButton("녹화 끄기",{SituationRecorder.stop()})}
  SituationVideo(c.id)
+ if(s.preview)NoteText("체험 모드라 실제로 전송되지 않아요.")
  if(c.acceptedBy!=null)SmallNote("동료가 확인하러 오고 있어요.")
  if(c.serverStatus=="unanswered"){SmallNote("수락한 사람이 없어요. 주변 동료나 반장에게 직접 연락하세요.",amber=true);SLButton("동료에게 다시 요청",{onRespond("retry",null)},enabled=!busy,secondary=true)}
  SLButton("119 전화",onDial,color=Danger,large=true,icon="phone")
  SLButton("괜찮아요, 제가 응답할게요",{onRespond("safe",null)},enabled=!busy,secondary=true)
  if(c.workerResponse=="okay")GhostButton("도움이 필요해요",{onRespond("help",null);onRecord()},enabled=!busy)
  s.foremanPhone?.let{phone->SLButton("반장님께 전화",{onPhone(phone)},secondary=true,icon="phone")}
- if(SafetyAlarm.beaconOn)GhostButton("사이렌·손전등 끄기",{SafetyAlarm.stop()})
  if(s.preview)GhostButton("체험: 호출 실패 화면 보기",onFailed)
 }
 @Composable private fun CallRow(name:String,role:String,status:String){Row(Modifier.fillMaxWidth().padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Column(Modifier.weight(1f)){Text(name,fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(role,fontSize=14.sp,color=Muted)};SLPill(status,neutral=status!="수락")}}

@@ -26,6 +26,8 @@ import androidx.compose.ui.window.DialogProperties
  val page=WorkerPage.valueOf(pageName)
  var recordTimeline by rememberSaveable{mutableStateOf(false)}
  var sheet by rememberSaveable{mutableStateOf<String?>(null)}
+ var skippedShift by rememberSaveable{mutableStateOf<String?>(null)}
+ val skippedTasks=state.todayShift?.id.let{it!=null&&it==skippedShift}
  val snackbar=remember{SnackbarHostState()}
  fun navigate(destination:WorkerPage){if(destination==WorkerPage.RECORDS)recordTimeline=false;if(destination==WorkerPage.TODAY)controller.loadDay(todayKey());pageName=destination.name}
  fun open(route:String){when(route){
@@ -54,6 +56,7 @@ import androidx.compose.ui.window.DialogProperties
     IconButton({open("requests")}){Box{SLIcon("bell",tint=Ink,description="안전 확인 알림");if(state.activeCalls.isNotEmpty())Box(Modifier.align(Alignment.TopEnd).size(8.dp).background(Danger,CircleShape))}}
    }
   },bottomBar={Column {
+   if(page==WorkerPage.TODAY)TodayAction(state,skippedTasks,::open,::navigate)
    EmergencyStrip(actions.dial)
    HorizontalDivider(color=Line)
    Row(Modifier.fillMaxWidth().background(Color.White)){WorkerPage.entries.forEach{destination->Column(Modifier.weight(1f).height(68.dp).clickable{navigate(destination)},horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp,Alignment.CenterVertically)){
@@ -66,7 +69,7 @@ import androidx.compose.ui.window.DialogProperties
    if(controller.busy)LinearProgressIndicator(Modifier.fillMaxWidth(),color=Brand,trackColor=BrandSoft)
    key(page){Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start=20.dp,end=20.dp,top=6.dp,bottom=16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
     when(page){
-     WorkerPage.TODAY->HomePage(state,controller.now,::open,::navigate,actions.monitor,actions.checkLocation)
+     WorkerPage.TODAY->HomePage(state,controller.now,::open,::navigate,actions.monitor,actions.checkLocation,skippedTasks,{skippedShift=state.todayShift?.id},pinned=true)
      WorkerPage.REPORT->ReportPage(state,controller.busy,actions,controller::submitRisk,::open,controller::loadMoreRisks)
      WorkerPage.RECORDS->RecordsPage(state,{sheet="export"},::open,controller::loadMonth,controller::loadDay,controller::loadMoreTimeline,recordTimeline)
      WorkerPage.PROFILE->ProfilePage(state,::open,{sheet="notifications"})
@@ -78,7 +81,8 @@ import androidx.compose.ui.window.DialogProperties
  LaunchedEffect(activeSheet){controller.trackCall(activeSheet?.takeIf{it.startsWith("call:")}?.removePrefix("call:"))}
  LaunchedEffect(activeSheet,state.calls.firstOrNull{activeSheet=="call:${it.id}"}?.status){if(activeSheet?.startsWith("call:")==true)controller.loadVerificationPhoto(activeSheet.removePrefix("call:"))}
  val sheetCall=activeSheet?.takeIf{it.startsWith("call:")}?.let{route->state.calls.firstOrNull{it.id==route.removePrefix("call:")}}?.takeIf{it.status!="closed"}
- val bigDial=activeSheet=="call-failed"||sheetCall?.let{it.isSubject(state.uid)||(it.acceptedBy==state.uid&&it.arrivedAt!=null&&it.observation==null)}==true
+ // 3-6은 119가 맨 위에 있다. 나머지 긴급 화면은 스크롤해도 띠로 119를 누를 수 있어야 한다.
+ val bigDial=sheetCall?.let{it.acceptedBy==state.uid&&it.arrivedAt!=null&&it.observation==null}==true
  if(activeSheet!=null){AppSheet((if(state.preview)"체험 모드 · " else "")+sheetTitle(activeSheet),{sheet=null},{if(activeSheet.startsWith("call:"))actions.dialIncident(activeSheet.removePrefix("call:"))else actions.dial()},tape=sheetCall!=null||activeSheet=="call-failed",strip=!bigDial){
   controller.feedback?.let{SmallNote(it,amber=true)}
   when {
@@ -165,11 +169,12 @@ private fun sheetTitle(route:String)=when{
     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){SLPill("시스템이 추정",amber=true,estimate=true);if(preview)SLPill("체험 모드",amber=true)}
     Text("강한 충격이\n감지되었어요",fontSize=28.sp,lineHeight=36.sp,fontWeight=FontWeight.ExtraBold,color=Ink)
     Text("안전 상태를 확인해 주세요.",fontSize=16.sp,color=Muted)
-    Box(Modifier.size(190.dp).align(Alignment.CenterHorizontally),contentAlignment=Alignment.Center){CircularProgressIndicator(progress={(remaining/15f).coerceIn(0f,1f)},modifier=Modifier.fillMaxSize(),color=Danger,trackColor=DangerSoft,strokeWidth=12.dp);Column(horizontalAlignment=Alignment.CenterHorizontally){Text("$remaining",fontSize=76.sp,lineHeight=84.sp,fontWeight=FontWeight.ExtraBold,color=Danger);Text("초 안에 눌러 주세요",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)}}
+    Box(Modifier.size(160.dp).align(Alignment.CenterHorizontally),contentAlignment=Alignment.Center){CircularProgressIndicator(progress={(remaining/15f).coerceIn(0f,1f)},modifier=Modifier.fillMaxSize(),color=Danger,trackColor=DangerSoft,strokeWidth=12.dp);Column(horizontalAlignment=Alignment.CenterHorizontally){Text("$remaining",fontSize=64.sp,lineHeight=70.sp,fontWeight=FontWeight.ExtraBold,color=Danger);Text("초 남음",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted,maxLines=1)}}
     Text(if(remaining>0)"응답이 없으면 안전 동료와 반장님께 알림이 가요." else "응답 시간이 지났어요. 서버 연결 상태를 확인해 주세요.",Modifier.fillMaxWidth(),fontSize=14.sp,lineHeight=22.sp,color=Muted,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
     if(canListen)NoteText("말로도 답할 수 있어요. '괜찮아요' 또는 '도와줘'",center=true)
-    Spacer(Modifier.weight(1f))
-    SLButton("괜찮아요",onSafe,enabled=!busy,icon="check",color=Ok)
+   }
+   Column(Modifier.padding(start=20.dp,end=20.dp,bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+    SLButton("괜찮아요",onSafe,enabled=!busy,icon="check",color=Ok,large=true)
     SLButton("119 전화",onDial,icon="phone",color=Danger)
     GhostButton("도움이 필요해요",onHelp,enabled=!busy)
    }

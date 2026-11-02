@@ -36,8 +36,8 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
             controller.feedback?.let { SmallNote(it, amber = true) }
             when (stage) {
                 "welcome" -> {
-                    Box(Modifier.fillMaxWidth().height(150.dp).background(BrandSoft, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
-                        BrandRings(Modifier.size(width = 150.dp, height = 96.dp))
+                    Box(Modifier.fillMaxWidth().height(110.dp).background(BrandSoft, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
+                        BrandRings(Modifier.size(width = 120.dp, height = 78.dp))
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("안전고리", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
@@ -50,9 +50,6 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
                         HorizontalDivider(color = Line)
                         Text("쓰러지면 동료와 반장님께 알려요", fontSize = 16.sp, color = Ink)
                     }
-                    SLButton("시작하기", { controller.beginOnboarding("signup") })
-                    SLButton("체험 먼저 해보기", controller::usePreview, secondary = true)
-                    GhostButton("이미 계정이 있어요 · 로그인", { controller.beginOnboarding("login") })
                 }
                 "signup", "login" -> key(stage) {
                     val signup = stage == "signup"
@@ -138,6 +135,12 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
                     GhostButton("나중에 할게요", controller::finishOnboarding)
                 }
             }
+        }
+        // 글자를 크게 써도 첫 화면의 버튼은 항상 보여야 한다.
+        if (stage == "welcome") Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SLButton("시작하기", { controller.beginOnboarding("signup") })
+            SLButton("체험 먼저 해보기", controller::usePreview, secondary = true)
+            GhostButton("이미 계정이 있어요 · 로그인", { controller.beginOnboarding("login") })
         }
         EmergencyStrip(actions.dial)
     }
