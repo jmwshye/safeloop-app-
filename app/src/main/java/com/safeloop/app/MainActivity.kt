@@ -1,436 +1,201 @@
 package com.safeloop.app
 
+import android.Manifest
+import android.app.NotificationManager
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.location.Location
+import androidx.core.location.LocationManagerCompat
+import android.os.CancellationSignal
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.os.CountDownTimer
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.google.firebase.firestore.FirebaseFirestore
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.UUID
 
-class MainActivity : ComponentActivity() {
-
-    private lateinit var sensorDetector: SensorDetector
-    private val db by lazy { FirebaseFirestore.getInstance() }
-    private var countDownTimer: CountDownTimer? = null
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        // UI 및 센서 상태 변수
-        var currentGState by mutableDoubleStateOf(1.00)
-        var linearGState by mutableDoubleStateOf(0.00)
-        var sensorStatusText by mutableStateOf("대기 중")
-        var isCheckedIn by mutableStateOf(false)
-        var checkInTimeString by mutableStateOf("--:--")
-        var isHighRiskMode by mutableStateOf(false)
-
-        // 안전점검 3항목 체크 상태
-        var check1FallZone by mutableStateOf(false)
-        var check2FloorOpening by mutableStateOf(false)
-        var check3PpeHelmet by mutableStateOf(false)
-
-        // 비상 경보(15초 카운트다운) 상태
-        var alertActive by mutableStateOf(false)
-        var remainingSeconds by mutableIntStateOf(15)
-        var lastDetectedShockG by mutableDoubleStateOf(0.0)
-        var lastServerLog by mutableStateOf("서버 연결 준비 완료 (Spark 0원 방어 모드)")
-
-        fun uploadEventToFirestore(eventType: String, factType: String, shockVal: Double) {
-            val evtId = "evt_" + UUID.randomUUID().toString().take(8)
-            val now = System.currentTimeMillis()
-            val (prevH, currH) = HashChainEngine.generateChainedHash(
-                evtId, "user_park_01", eventType, shockVal, now
-            )
-
-            val event = SafetyEvent(
-                eventId = evtId,
-                incidentGroupId = "inc_20261026_01",
-                eventType = eventType,
-                factOrEstimate = factType,
-                shockG = shockVal,
-                deviceTimestamp = now,
-                prevEventHash = prevH,
-                currentEventHash = currH
-            )
-
-            db.collection("safety_events")
-                .document(evtId)
-                .set(event)
-                .addOnSuccessListener {
-                    lastServerLog = "[전송성공] $eventType (${shockVal}G) | Hash: " + currH.take(12) + "..."
-                }
-                .addOnFailureListener { e ->
-                    lastServerLog = "[오프라인 큐 보관] 네트워크 복구 시 자동 재전송 (${e.message})"
-                }
-        }
-
-        fun triggerShockAlert(shockG: Double) {
-            if (alertActive) return
-            alertActive = true
-            lastDetectedShockG = shockG
-            remainingSeconds = 15
-
-            uploadEventToFirestore("SHOCK_DETECTED", "SYSTEM_ESTIMATE", shockG)
-
-            countDownTimer?.cancel()
-            countDownTimer = object : CountDownTimer(15000, 1000) {
-                override fun onTick(millisUntilFinished: Long) {
-                    remainingSeconds = (millisUntilFinished / 1000).toInt() + 1
-                }
-                override fun onFinish() {
-                    alertActive = false
-                    uploadEventToFirestore("SELF_NO_RESPONSE", "SYSTEM_ESTIMATE", shockG)
-                    uploadEventToFirestore("PEER_CALL_SENT", "SYSTEM_ESTIMATE", shockG)
-                    Toast.makeText(this@MainActivity, "무응답: 안전동료(정민철) 및 반장에게 긴급 호출 발송됨!", Toast.LENGTH_LONG).show()
-                }
-            }.start()
-        }
-
-        sensorDetector = SensorDetector(
-            context = this,
-            onTelemetryUpdate = { totalG, linG, status ->
-                currentGState = totalG
-                linearGState = linG
-                sensorStatusText = status
-            },
-            onShockAndInactivityDetected = { peakG ->
-                triggerShockAlert(peakG)
-            }
-        )
-        sensorDetector.start()
-
-        setContent {
-            SafeLoopCommercialApp(
-                isCheckedIn = isCheckedIn,
-                checkInTime = checkInTimeString,
-                isHighRiskMode = isHighRiskMode,
-                check1 = check1FallZone,
-                check2 = check2FloorOpening,
-                check3 = check3PpeHelmet,
-                onCheck1Change = { check1FallZone = it },
-                onCheck2Change = { check2FloorOpening = it },
-                onCheck3Change = { check3PpeHelmet = it },
-                onCompleteCheckIn = {
-                    val sdf = SimpleDateFormat("HH:mm:ss", Locale.KOREA)
-                    checkInTimeString = sdf.format(Date())
-                    isCheckedIn = true
-                    uploadEventToFirestore("CHECK_IN", "HUMAN_FACT", 1.0)
-                    Toast.makeText(this, "출근 및 작업 전 안전점검이 서버에 기록되었습니다.", Toast.LENGTH_SHORT).show()
-                },
-                onToggleHighRisk = { enabled ->
-                    isHighRiskMode = enabled
-                    if (enabled) {
-                        uploadEventToFirestore("HIGH_RISK_START", "HUMAN_FACT", 1.0)
-                    }
-                },
-                alertActive = alertActive,
-                remainingSec = remainingSeconds,
-                detectedG = lastDetectedShockG,
-                onImOkayClick = {
-                    countDownTimer?.cancel()
-                    alertActive = false
-                    uploadEventToFirestore("SELF_OK_FALSE_ALARM", "HUMAN_FACT", lastDetectedShockG)
-                },
-                onCall119Click = {
-                    uploadEventToFirestore("EMERGENCY_119_CALLED", "HUMAN_FACT", lastDetectedShockG)
-                    Toast.makeText(this, "현장 위치(2층 설비구역) 및 사고 경위 로그가 서버에 긴급 고정되었습니다.", Toast.LENGTH_LONG).show()
-                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:119"))
-                    startActivity(intent)
-                },
-                currentG = currentGState,
-                linearG = linearGState,
-                sensorState = sensorStatusText,
-                lastLog = lastServerLog,
-                onSimulateShockClick = {
-                    triggerShockAlert(3.45)
-                }
-            )
-        }
+class MainActivity:ComponentActivity(){
+ private lateinit var controller:WorkerController
+ private lateinit var captures:WorkerCapture
+ private var setupScope:String?=null
+ private var locationRequest:LocationRequest?=null
+ private var resolvingLocation=false
+ private var responderLocation:((Location?)->Unit)?=null
+ private val setupPermissions=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){ if(setupScope==controller.captureScope && controller.onboarding=="permissions")controller.finishOnboarding();setupScope=null }
+ private val ppeCamera=registerForActivityResult(ActivityResultContracts.StartActivityForResult()){ result ->
+  val data=result.data
+  if(captures.scope!=controller.captureScope){captures.cancel();return@registerForActivityResult}
+  val ok=result.resultCode==RESULT_OK
+  if(ok&&data?.getBooleanExtra("dial119",false)==true)dial(captures.subject?.takeIf{captures.guide=="scene"})
+  val mismatch=ok&&data?.getBooleanExtra("mismatch",false)==true&&captures.guide=="peer_check"
+  if(mismatch || (ok && data?.data!=null))captures.finish(mismatch) else captures.cancel()
+ }
+ private var notificationAction:NotificationAction?=null
+ private var notificationScope:String?=null
+ private val notificationPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->val action=notificationAction;notificationAction=null;if(granted)action?.takeIf{notificationScope==controller.captureScope}?.let(::performNotificationAction)else controller.feedback="알림을 허용하면 본인 확인과 동료 요청을 받을 수 있어요. 내 정보에서 알림 설정을 확인해 주세요."}
+ private val cameraPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(granted&&captures.scope==controller.captureScope)launchCamera()else{captures.cancel();controller.feedback="현장 사진을 찍으려면 카메라 권한을 허용해 주세요."}}
+ private val locationPermission=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){result->if(result.values.any{it})getLocation()else useLocation(null)}
+ override fun onSaveInstanceState(outState:Bundle) {
+  super.onSaveInstanceState(outState)
+  outState.putString("locationPurpose",locationRequest?.purpose?.name)
+  outState.putString("locationScope",locationRequest?.scope)
+  outState.putBoolean("resolvingLocation",resolvingLocation)
+  outState.putString("setupScope",setupScope)
+  outState.putString("notificationScope",notificationScope)
+  outState.putString("notificationAction",notificationAction?.name)
+ }
+ override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState)
+  WindowCompat.setDecorFitsSystemWindows(window,false)
+  WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=true;isAppearanceLightNavigationBars=true}
+  controller=ViewModelProvider(this)[WorkerController::class.java]
+  captures=ViewModelProvider(this)[WorkerCapture::class.java]
+  setupScope=savedInstanceState?.getString("setupScope")
+  notificationScope=savedInstanceState?.getString("notificationScope")
+  notificationAction=NotificationAction.entries.find{it.name==savedInstanceState?.getString("notificationAction")}
+  locationRequest=LocationRequest.restore(savedInstanceState?.getString("locationPurpose"),savedInstanceState?.getString("locationScope"))
+  if(locationRequest!=null&&savedInstanceState?.getBoolean("resolvingLocation")==true)getLocation()
+  if(savedInstanceState==null)handleIntent(intent)
+  setContent{
+   val photo=captures.result
+   val scope=controller.captureScope
+   val state=controller.state
+   androidx.compose.runtime.LaunchedEffect(photo,scope,state.buddyAttendanceId,state.lastSyncedAt!=null){
+    if(photo!=null && photo.scope!=scope)captures.discardResult()
+    else if(photo?.guide=="peer_check"&&!state.preview&&state.lastSyncedAt!=null&&photo.subject!=state.buddyAttendanceId){
+     captures.discardResult()
+     controller.feedback="동료가 바뀌어 이전 동료의 촬영 결과를 폐기했어요."
     }
+   }
+   androidx.compose.runtime.LaunchedEffect(captures.failure){captures.failure?.let{controller.feedback=it}}
+   WorkerTheme{
+    androidx.compose.runtime.key(scope){WorkerApp(controller,WorkerActions(
+     dial={dial()},capture=::capture,cameraResult=photo?.takeIf{it.scope==scope},consumeCamera=captures::consume,
+     attend={requestLocation(LocationPurpose.CHECK_IN)},monitor={enabled->if(enabled)notifications(NotificationAction.MONITOR)else controller.setMonitoring(false)},
+     export=::exportRecords,notificationSettings=::notificationSettings,notifications=::notifications,shareReport=::shareReport,map=::openMap,phone=::callPhone,dialIncident={dial(it)},
+     checkLocation={requestLocation(LocationPurpose.CHECK_ONLY)},locate={callback->if(locationRequest==null){responderLocation=callback;requestLocation(LocationPurpose.RESPONDER)}else controller.feedback="위치 확인 중이에요."},
+     onboardingPermissions=::requestSetupPermissions))}}
+  }
+ }
+ override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);handleIntent(intent)}
+ override fun onResume(){super.onResume();if(::controller.isInitialized)controller.refreshMonitoring()}
+ private fun handleIntent(intent:Intent){
+  val matches=controller.acceptsNotification(intent.getStringExtra("siteId"),intent.getStringExtra("recipientId"))
+  if(intent.getBooleanExtra("dial119",false)){intent.removeExtra("dial119");dial(intent.getStringExtra("callId"),matches);return}
+  if(matches)intent.getStringExtra("notificationType")?.let{controller.openNotice(it,intent.getStringExtra("entityId"))}
+  intent.getStringExtra("callId")?.let{if(matches)controller.openCall(it)else controller.feedback="현재 연결한 계정·현장의 알림이 아니에요."}
+  if(intent.getBooleanExtra("alert",false)&&intent.getStringExtra("callId")==null&&!controller.state.preview&&matches)controller.requestedRoute="call-failed"
+ }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        countDownTimer?.cancel()
-        sensorDetector.stop()
-    }
-}
+ private fun performNotificationAction(action:NotificationAction) {
+  when(action) {
+   NotificationAction.MONITOR->controller.setMonitoring(true)
+   NotificationAction.DEMO_SELF->controller.simulateSelf()
+   NotificationAction.DEMO_PEER->controller.simulateIncoming()
+  }
+ }
+ private fun notifications(action:NotificationAction){
+  val manager=getSystemService(NotificationManager::class.java)
+  if(manager.getNotificationChannel("alerts")?.importance==NotificationManager.IMPORTANCE_NONE){controller.feedback="내 정보의 알림 설정에서 ‘안전 확인 요청’을 허용해 주세요.";return}
+  if(Build.VERSION.SDK_INT>=33&&ContextCompat.checkSelfPermission(this,Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){if(notificationAction!=null)return;notificationAction=action;notificationScope=controller.captureScope;notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}
+  else if(!NotificationManagerCompat.from(this).areNotificationsEnabled())controller.feedback="앱 알림이 차단되어 있어요. 내 정보에서 알림을 허용해 주세요."
+  else performNotificationAction(action)
+ }
+ private fun requestSetupPermissions(){
+  val permissions=mutableListOf(Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.CAMERA)
+  if(Build.VERSION.SDK_INT>=33)permissions+=Manifest.permission.POST_NOTIFICATIONS
+  setupScope=controller.captureScope;setupPermissions.launch(permissions.toTypedArray())
+ }
+ private fun capture(guide:String, subject:String) {
+  if(!captures.begin(controller.captureScope,guide,subject)){controller.feedback="사진을 준비하고 있어요. 잠시 기다려 주세요.";return}
+  if(ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)cameraPermission.launch(Manifest.permission.CAMERA) else launchCamera()
+ }
+ private fun launchCamera(){
+  val file=captures.file?:return
+  try{
+   val uri=FileProvider.getUriForFile(this,"com.safeloop.app.files",file)
+   ppeCamera.launch(Intent(this,PpeCameraActivity::class.java).setData(uri).putExtra("guide",captures.guide).putExtra("previewMode",controller.state.preview))
+  }catch(e:Exception){captures.cancel();controller.feedback="카메라를 열 수 없어요. 기기 카메라 설정을 확인해 주세요."}
+ }
+ private fun requestLocation(purpose:LocationPurpose){
+  if(controller.state.preview){if(purpose==LocationPurpose.CHECK_IN)controller.checkIn();return}
+  if(locationRequest!=null){controller.feedback="위치 확인 중이에요.";return}
+  locationRequest=LocationRequest(purpose,controller.captureScope)
+  if(ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED &&
+     ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED)
+      locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION))
+  else getLocation()
+ }
+ private fun useLocation(location:Location?){
+  val purpose=locationRequest?.forScope(controller.captureScope)
+  locationRequest=null
+  resolvingLocation=false
+  val callback=responderLocation
+  responderLocation=null
+  if(purpose==null)return
+  val fix=location?.let{mapOf("latitude" to it.latitude,"longitude" to it.longitude,"accuracyMeters" to it.accuracy.toDouble(),"capturedAt" to java.time.Instant.ofEpochMilli(it.time).toString())}
+  when(purpose) {
+   LocationPurpose.CHECK_IN -> controller.checkIn(fix)
+   LocationPurpose.CHECK_ONLY -> controller.verifyLocation(fix)
+   LocationPurpose.RESPONDER -> if(callback!=null)callback(location) else controller.feedback="거리 확인을 다시 눌러 주세요."
+  }
+ }
+ @android.annotation.SuppressLint("MissingPermission")
+ private fun getLocation(){
+  if(locationRequest==null || resolvingLocation)return
+  resolvingLocation=true
+  lifecycleScope.launch {
+   val manager=getSystemService(LOCATION_SERVICE) as LocationManager
+   val fix=try {
+    val providers=manager.getProviders(true)
+    val fresh=providers.mapNotNull{manager.getLastKnownLocation(it)}.filter{it.hasAccuracy()&&System.currentTimeMillis()-it.time in 0L..30_000L}.minByOrNull{it.accuracy}
+    val provider=listOf(LocationManager.GPS_PROVIDER,LocationManager.NETWORK_PROVIDER).firstOrNull{it in providers}
+    fresh?:provider?.let{withTimeoutOrNull(5000L){suspendCancellableCoroutine<Location?>{cont->
+     val cancel=CancellationSignal();cont.invokeOnCancellation{cancel.cancel()}
+     LocationManagerCompat.getCurrentLocation(manager,it,cancel,ContextCompat.getMainExecutor(this@MainActivity)){loc->if(cont.isActive)cont.resume(loc)}
+    }}}
+   }catch(_:SecurityException){null}catch(_:IllegalArgumentException){null}
+   useLocation(fix?.takeIf{it.hasAccuracy()&&it.accuracy.isFinite()&&it.accuracy>=0})
+  }
+ }
+ private fun dial(incidentId:String?=null,record:Boolean=true){runCatching{startActivity(Intent(Intent.ACTION_DIAL,Uri.parse("tel:119")))}.onSuccess{if(record)controller.emergency(incidentId)}.onFailure{controller.feedback="전화 앱을 열 수 없습니다. 다른 전화로 119에 연락해 주세요."}}
+ private fun notificationSettings(){runCatching{startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName))}.onFailure{controller.feedback="기기 설정에서 안전고리의 알림을 허용해 주세요."}}
+ private fun exportRecords(from:String,to:String,format:String,callId:String?){
+  if(!controller.state.preview||format !in listOf("pdf","csv"))return
+  val state=controller.state
+  lifecycleScope.launch{
+   try{
+    val file=withContext(Dispatchers.IO){createPreviewExport(cacheDir,state,from,to,format,callId)}
+    val uri=FileProvider.getUriForFile(this@MainActivity,"com.safeloop.app.files",file)
+    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(if(format=="pdf")"application/pdf" else "text/csv").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),"체험 기록 내보내기"))
+   }catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){controller.feedback="체험 기록을 내보내지 못했어요."}
+  }
+ }
+ private fun callPhone(number:String){runCatching{startActivity(Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(number))))}.onFailure{controller.feedback="전화 앱을 열 수 없어요."}}
+ private fun openMap(latitude:Double,longitude:Double){runCatching{startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("geo:$latitude,$longitude?q=$latitude,$longitude")))}.onFailure{controller.feedback="지도 앱을 열 수 없어요. 위치: $latitude, $longitude"}}
+ private fun shareReport(path:String,format:String){
+  if(format !in listOf("pdf","csv"))return
+  lifecycleScope.launch{
+   try{val version=controller.sessionVersion;val bytes=controller.report(path);if(version!=controller.sessionVersion||controller.state.preview)return@launch;val file=withContext(Dispatchers.IO){File(cacheDir,"nest-media").apply{mkdirs()}.let{File(it,"safeloop-${UUID.randomUUID()}.$format")}.apply{writeBytes(bytes)}}
+    if(version!=controller.sessionVersion||controller.state.preview){file.delete();return@launch}
+    val uri=FileProvider.getUriForFile(this@MainActivity,"com.safeloop.app.files",file)
+    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(if(format=="pdf")"application/pdf" else "text/csv").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),"서버 기록 내보내기"))
+   }catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){controller.feedback=e.localizedMessage?:"보고서를 내보내지 못했어요."}
+  }
+ }
 
-@Composable
-fun SafeLoopCommercialApp(
-    isCheckedIn: Boolean,
-    checkInTime: String,
-    isHighRiskMode: Boolean,
-    check1: Boolean,
-    check2: Boolean,
-    check3: Boolean,
-    onCheck1Change: (Boolean) -> Unit,
-    onCheck2Change: (Boolean) -> Unit,
-    onCheck3Change: (Boolean) -> Unit,
-    onCompleteCheckIn: () -> Unit,
-    onToggleHighRisk: (Boolean) -> Unit,
-    alertActive: Boolean,
-    remainingSec: Int,
-    detectedG: Double,
-    onImOkayClick: () -> Unit,
-    onCall119Click: () -> Unit,
-    currentG: Double,
-    linearG: Double,
-    sensorState: String,
-    lastLog: String,
-    onSimulateShockClick: () -> Unit
-) {
-    var showDevDrawer by remember { mutableStateOf(false) }
-    val scrollState = rememberScrollState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0F172A))
-            .padding(18.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // 1. 상단 바: 브랜드 및 보호 상태 배지
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("안전고리 SafeLoop", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("소규모 현장 근로·안전 상호증명 시스템", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                }
-                Surface(
-                    color = if (isCheckedIn) Color(0xFF065F46) else Color(0xFF334155),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Text(
-                        text = if (isCheckedIn) "● 근무 및 보호 중" else "○ 출근 대기",
-                        color = if (isCheckedIn) Color(0xFF6EE7B7) else Color(0xFFCBD5E1),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            // 2. 작업자 근로 증명 & 안전 동료 매칭 카드 (작업자가 앱을 켜는 핵심 이유!)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text("작업자 및 소속 구역", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                            Text("박태규 · 2층 배관설비", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("오늘 예상 일당 (근로증명)", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                            Text("180,000 원", color = Color(0xFF38BDF8), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                        }
-                    }
-                    HorizontalDivider(color = Color(0xFF334155))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("오늘의 2인 1조 안전 동료: 정민철 (연결됨)", color = Color(0xFFA7F3D0), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text("출근시각: $checkInTime", color = Color(0xFFCBD5E1), fontSize = 13.sp)
-                    }
-                }
-            }
-
-            // 3. 비상 경보 발생 시 최우선 노출되는 15초 본인 확인 모달
-            if (alertActive) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF7F1D1D)),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("강한 충격 및 정지가 감지되었습니다", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("감지 수치: ${detectedG}G (시스템 추정 - 안전 확인 요청)", color = Color(0xFFFCA5A5), fontSize = 13.sp)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("${remainingSec}초", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Black)
-                        Text("응답이 없으면 안전 동료(정민철)와 반장에게 즉시 알림이 전송됩니다.", color = Color(0xFFFECACA), fontSize = 13.sp)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = onImOkayClick,
-                            modifier = Modifier.fillMaxWidth().height(64.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("괜찮습니다 (본인 정상 확인 - 오탐 취소)", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
-            // 4. 상태별 메인 워크플로우 영역 (출근 전 점검 vs 출근 후 주머니 감시 모드)
-            if (!isCheckedIn) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("작업 시작 전 필수 안전 확인 (3항목)", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("세 항목을 모두 확인해야 오늘의 출근 및 근로 증명이 시작됩니다.", color = Color(0xFF94A3B8), fontSize = 12.sp)
-
-                        CheckItemRow("1. 작업 구역 추락·개구부 위험 위치 확인", check1, onCheck1Change)
-                        CheckItemRow("2. 바닥 자재 정리 및 안전난간 상태 확인", check2, onCheck2Change)
-                        CheckItemRow("3. 본인 안전모·턱끈 및 보호구 착용 완료", check3, onCheck3Change)
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val allChecked = check1 && check2 && check3
-                        Button(
-                            onClick = onCompleteCheckIn,
-                            enabled = allChecked,
-                            modifier = Modifier.fillMaxWidth().height(62.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF16A34A),
-                                disabledContainerColor = Color(0xFF334155)
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(
-                                text = if (allChecked) "출근 및 작업 전 안전점검 완료 기록" else "위 3개 안전 항목을 먼저 체크해 주세요",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-                }
-            } else {
-                // 출근 완료 후: 작업 중 무조작 주머니 보호 모드 화면 (헌장 17-3절 반영)
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF064E3B)),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("작업 중에는 휴대폰을 주머니에 넣어 두세요", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(
-                            "화면이 꺼져 있어도 이상 충격과 무동작이 감지되면 자동으로 안전 동료(정민철)와 현장 책임자에게 구조를 요청합니다.",
-                            color = Color(0xFFA7F3D0),
-                            fontSize = 13.sp
-                        )
-                        HorizontalDivider(color = Color(0xFF047857))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text("고소·고위험 작업 집중 감시 모드", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                Text("비계·사다리·개구부 작업 시 센서 민감도 강화", color = Color(0xFFA7F3D0), fontSize = 11.sp)
-                            }
-                            Switch(
-                                checked = isHighRiskMode,
-                                onCheckedChange = onToggleHighRisk
-                            )
-                        }
-                    }
-                }
-            }
-
-            // 5. 접이식 시연/개발자 전용 텔레메트리 패널 (평소엔 숨겨서 상용 앱 퀄리티 유지!)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showDevDrawer = !showDevDrawer },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("엔지니어링 시연 및 센서/해시 모니터", color = Color(0xFF94A3B8), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (showDevDrawer) "접기 ▲" else "펼치기 ▼", color = Color(0xFF38BDF8), fontSize = 12.sp)
-                    }
-                    if (showDevDrawer) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("• 합성 가속도: ${currentG}G | 순수 선형충격(LPF): ${linearG}G", color = Color.White, fontSize = 12.sp)
-                        Text("• 엣지 판별 상태: $sensorState", color = Color(0xFF93C5FD), fontSize = 12.sp)
-                        Text("• 최근 블록체인 해시 로그: $lastLog", color = Color(0xFFA7F3D0), fontSize = 11.sp)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Button(
-                            onClick = onSimulateShockClick,
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("[시연용] 3.45G 추락 충격 + 무동작 시나리오 강제 트리거", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 6. 최하단 고정: 119 긴급 신고 버튼 (헌장 원칙: 60dp 이상, 모든 단계에서 즉시 실행 보장)
-        Button(
-            onClick = onCall119Click,
-            modifier = Modifier.fillMaxWidth().height(64.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("119 긴급 신고 및 현장 위치·로그 즉시 전송", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-        }
-    }
-}
-
-@Composable
-fun CheckItemRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Surface(
-        color = if (checked) Color(0xFF064E3B) else Color(0xFF0F172A),
-        shape = RoundedCornerShape(8.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(checked = checked, onCheckedChange = onCheckedChange)
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(label, color = Color.White, fontSize = 14.sp, fontWeight = if (checked) FontWeight.Bold else FontWeight.Normal)
-        }
-    }
 }
