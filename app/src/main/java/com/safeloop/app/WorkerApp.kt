@@ -166,7 +166,7 @@ private fun sheetTitle(route:String)=when{
  if(s.peerChecked){DetailRow("출근 위치",locationLabel(s.locationStatus));DetailRow("확인",if(s.peerStatus=="photo_confirmed")"사진 교차 확인" else "사진 없는 진술");SLButton("작업 시작",onDone)}
  Text("동료의 보호구를 직접 보고 확인해 주세요.",fontSize=15.sp,fontWeight=FontWeight.SemiBold,color=Ink)
  ChoiceTabs(listOf("착용 확인","개선 필요"),listOf("착용","미착용").indexOf(observed)){if(it==1){discardPhoto(photo);photo=null};observed=if(it==0)"착용" else "미착용"}
- if(observed=="착용"){Text("안전모·턱끈·안전대가 보이도록 찍어 주세요. 얼굴은 필요 없어요.",fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=Ink);PhotoCapture(photo){actions.capture("peer_check",subject)}}else if(observed=="미착용")SmallNote("불일치 상태는 촬영하지 마세요. 조치 후 다시 확인하세요.",amber=true)
+ if(observed=="착용"){Text("안전모·턱끈·안전대가 보이도록 찍어 주세요. 얼굴은 필요 없어요.",fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=Ink);PhotoCapture(photo,"동료 보호구 촬영","안전모·턱끈·안전대가 보이게 찍어 주세요."){actions.capture("peer_check",subject)}}else if(observed=="미착용")SmallNote("불일치 상태는 촬영하지 마세요. 조치 후 다시 확인하세요.",amber=true)
  SmallNote("이 화면은 작업 전 보호구 확인이에요. 긴급 대응은 별도 요청에서 도착·상태를 기록하고 사진은 선택해요.")
  SLButton(when{observed=="미착용"->"불일치 기록";photo==null->"사진 없이 확인";else->"사진과 확인 저장"},{onSave(observed,photo.takeIf{observed=="착용"})},enabled=!busy&&observed.isNotEmpty()&&(s.preview||s.buddyAttendanceId!=null),icon="check")
  s.peerEvidence.forEach{check->DetailRow(if(check.checkerId==s.uid)"${s.name} → ${s.buddyName}" else "${s.buddyName} → ${s.name}",when(check.outcome){"mismatch"->"불일치";else->if(check.photoId!=null)"사진 확인" else "사진 없는 진술"});DetailRow("서버 확인 시각",clockText(check.checkedAt));check.photo?.let{PhotoPreview(it)}}
@@ -179,7 +179,6 @@ private fun sheetTitle(route:String)=when{
  var reason by rememberSaveable(c.id){mutableStateOf("")}
  SLPill(if(s.preview)"체험 요청" else "현장 안전 확인",amber=c.status!="closed")
  Text("${c.subjectName} · ${callStatus(c,s.uid)}",fontSize=24.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold,color=Ink)
- if(c.status!="closed")EmergencyStrip(onDial)
  DetailRow("작업 구역",c.zone);DetailRow("발생 시각",clockText(c.createdAt.takeIf{it>0}));c.acceptedAt?.let{DetailRow("수락 시각",clockText(it))};c.arrivedAt?.let{DetailRow("도착 시각",clockText(it))}
  if(c.status!="closed"&&c.acceptedBy==s.uid&&c.arrivedAt==null&&c.latitude!=null&&c.longitude!=null)IncidentDirections(c,locate)
  if(c.status!="closed"&&c.latitude!=null&&c.longitude!=null){DetailRow("위치 오차",c.accuracy?.let{"약 ${it.toInt()}m"}?:"미확인");SLButton("지도에서 위치 보기",{onMap(c.latitude,c.longitude)},secondary=true,icon="pin")}else if(c.status!="closed")SmallNote("위치를 확인할 수 없어요. 구역 정보와 직접 연락으로 확인해 주세요.",amber=true)
@@ -264,18 +263,22 @@ private fun sheetTitle(route:String)=when{
  SmallNote("원본 기록과 사람의 확인·시스템 추정을 함께 제공해요. 사고 원인이나 법적 판단을 확정하지 않아요.")
 }
 
+// 3-1 본인 확인 15초. 탭을 숨기고 괜찮아요와 119만 크게 보여준다.
 @Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now)
- Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false,usePlatformDefaultWidth=false)){
-  Surface(Modifier.fillMaxWidth().padding(20.dp).widthIn(max=440.dp),shape=RoundedCornerShape(24.dp),color=Color.White){Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(18.dp)){
-   SLPill(if(preview)"체험 · 시스템이 추정" else "시스템이 추정",amber=true)
-   Box(Modifier.size(60.dp).background(DangerSoft,CircleShape),contentAlignment=Alignment.Center){SLIcon("activity",Modifier.size(31.dp),Danger)}
-   Text("강한 충격이\n감지되었어요",fontSize=28.sp,lineHeight=36.sp,fontWeight=FontWeight.ExtraBold,color=Ink,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
-   Text("안전 상태를 확인해 주세요.\n괜찮다면 아래 버튼을 눌러 주세요.",fontSize=15.sp,lineHeight=25.sp,color=Muted,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
-   Box(Modifier.size(170.dp),contentAlignment=Alignment.Center){CircularProgressIndicator(progress={(remaining/15f).coerceIn(0f,1f)},modifier=Modifier.fillMaxSize(),color=Danger,trackColor=DangerSoft,strokeWidth=10.dp);Column(horizontalAlignment=Alignment.CenterHorizontally){Text("$remaining",fontSize=68.sp,fontWeight=FontWeight.ExtraBold,color=Danger);Text("초 남음",fontSize=13.sp,color=Muted)}}
-   Text(if(remaining>0)"응답이 없으면 안전 동료와 현장 책임자에게 알려요." else "응답 시간이 지났어요. 서버 연결 상태를 확인해 주세요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
-   SLButton("괜찮아요",onSafe,enabled=!busy,icon="check",color=Ok)
-   SLButton("도움이 필요해요",onHelp,enabled=!busy,secondary=true)
-   EmergencyStrip(onDial)
+ Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false,usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
+  Surface(Modifier.fillMaxSize(),color=Color.White){Column(Modifier.fillMaxSize().safeDrawingPadding()){
+   TapeStrip()
+   Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start=20.dp,end=20.dp,top=20.dp,bottom=16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){SLPill("시스템이 추정",amber=true,estimate=true);if(preview)SLPill("체험 모드",amber=true)}
+    Text("강한 충격이\n감지되었어요",fontSize=28.sp,lineHeight=36.sp,fontWeight=FontWeight.ExtraBold,color=Ink)
+    Text("안전 상태를 확인해 주세요.",fontSize=16.sp,color=Muted)
+    Box(Modifier.size(190.dp).align(Alignment.CenterHorizontally),contentAlignment=Alignment.Center){CircularProgressIndicator(progress={(remaining/15f).coerceIn(0f,1f)},modifier=Modifier.fillMaxSize(),color=Danger,trackColor=DangerSoft,strokeWidth=12.dp);Column(horizontalAlignment=Alignment.CenterHorizontally){Text("$remaining",fontSize=76.sp,lineHeight=84.sp,fontWeight=FontWeight.ExtraBold,color=Danger);Text("초 안에 눌러 주세요",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)}}
+    Text(if(remaining>0)"응답이 없으면 안전 동료와 반장님께 알림이 가요." else "응답 시간이 지났어요. 서버 연결 상태를 확인해 주세요.",Modifier.fillMaxWidth(),fontSize=14.sp,lineHeight=22.sp,color=Muted,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+    Spacer(Modifier.weight(1f))
+    SLButton("괜찮아요",onSafe,enabled=!busy,icon="check",color=Ok)
+    SLButton("119 전화",onDial,icon="phone",color=Danger)
+    GhostButton("도움이 필요해요",onHelp,enabled=!busy)
+   }
   }}
  }
 }

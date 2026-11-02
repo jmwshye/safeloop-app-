@@ -83,6 +83,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  }
  private fun update(next:WorkerState){state=next;if(next.preview)storage.save(next)}
  private fun event(title:String,detail:String,estimate:Boolean=false){check(state.preview);update(state.copy(events=listOf(WorkerEvent(UUID.randomUUID().toString(),title,detail,estimate=estimate))+state.events))}
+ var serverDown by mutableStateOf(false)
  private fun action(block:suspend()->Unit){if(busy)return;busy=true;viewModelScope.launch{try{block()}catch(e:CancellationException){throw e}catch(e:Exception){handleSessionError(e);feedback=e.localizedMessage?:"연결을 확인하고 다시 시도해 주세요."}finally{busy=false}}}
  private fun handleSessionError(e:Exception){if(e is ApiException&&e.status==401&&!repository.hasSession&&!state.preview){generation++;polling?.cancel();photoCache.clear();requestIds.clear();pendingSite=null;onboarding="login";app.stopService(Intent(app,SafetyService::class.java));state=WorkerState.live("","작업자").copy(connectionProblem="로그인이 만료됐어요. 내 정보에서 다시 연결해 주세요.")}}
  val captureScope get()=if(state.preview)"preview" else "${repository.sessionId}:${repository.siteId}"
@@ -224,7 +225,9 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   onboarding=null
  }
  fun authenticate(email:String,password:String,name:String,signUp:Boolean)=action {
-  if(signUp) repository.signUp(email.trim(),password,name.trim()) else repository.signIn(email.trim(),password)
+  serverDown=false
+  try{if(signUp) repository.signUp(email.trim(),password,name.trim()) else repository.signIn(email.trim(),password)}
+  catch(e:java.io.IOException){if(e is ApiException)throw e;serverDown=true;throw java.io.IOException("서버에 연결할 수 없어요.",e)}
   session.edit().putBoolean("connected",false).apply()
   generation++;polling?.cancel();photoCache.clear();requestIds.clear()
   val user=checkNotNull(repository.currentUser)
@@ -278,12 +281,16 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   listen();changed();registerToken()
  }
  fun finishProfile(job:String,zone:String,wage:Int?)=action {
+  if(state.preview){update(state.copy(job=job.trim(),zone=zone.trim(),wage=wage?:0,wageKnown=wage!=null));onboarding="permissions";return@action}
   repository.request("PUT","$sitePath/profile",mapOf("occupation" to job.trim(),"zone" to zone.trim(),"expectedWage" to wage))
   session.edit().putBoolean("needsProfile",false).apply()
   onboarding="permissions";changed()
  }
  fun cancelSiteConfirmation(){pendingSite=null}
- fun usePreview()=action {
+ // 서버에 닿지 않으면 입력한 이름으로 체험 모드를 시작한다. 실제 가입으로 표시하지 않는다.
+ fun continueOffline(name:String)=action {serverDown=false;enterPreview();if(name.isNotBlank())update(state.copy(name=name.trim()));onboarding="profile"}
+ fun usePreview()=action {enterPreview()}
+ private suspend fun enterPreview() {
   generation++;polling?.cancel();app.stopService(Intent(app,SafetyService::class.java))
   try {repository.logout()} finally {
    session.edit().putBoolean("connected",false).putBoolean("needsProfile",false).apply()

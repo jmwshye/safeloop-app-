@@ -36,8 +36,8 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
             controller.feedback?.let { SmallNote(it, amber = true) }
             when (stage) {
                 "welcome" -> {
-                    Box(Modifier.fillMaxWidth().height(230.dp).background(BrandSoft, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
-                        BrandRings(Modifier.size(width = 190.dp, height = 120.dp))
+                    Box(Modifier.fillMaxWidth().height(150.dp).background(BrandSoft, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
+                        BrandRings(Modifier.size(width = 150.dp, height = 96.dp))
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("안전고리", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
@@ -66,6 +66,10 @@ fun WorkerOnboarding(stage: String, controller: WorkerController, actions: Worke
                         visualTransformation = PasswordVisualTransformation(), label = { Text(if (signup) "비밀번호 · 12~20자" else "비밀번호") })
                     SLButton(if (signup) "다음" else "로그인", { controller.authenticate(email, password, name, signup) },
                         enabled = !busy && email.isNotBlank() && password.isNotBlank() && (!signup || (password.length in 12..20 && name.isNotBlank())))
+                    if (controller.serverDown) {
+                        SmallNote("지금은 서버에 연결할 수 없어요. 체험 모드로 이어서 볼 수 있어요. 기록은 이 폰에만 저장돼요.", amber = true)
+                        SLButton("체험 모드로 계속", { controller.continueOffline(name) }, enabled = !busy, secondary = true)
+                    }
                     GhostButton(if (signup) "이미 계정이 있어요" else "처음 이용해요", { controller.beginOnboarding(if (signup) "login" else "signup") })
                 }
                 "sites" -> {
