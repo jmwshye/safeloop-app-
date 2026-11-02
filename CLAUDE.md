@@ -21,11 +21,11 @@
 
 | 영역 | 위치 |
 | --- | --- |
-| 최신 작업자 앱 | `origin/feat/app-worker-experience` |
-| 백엔드 | `origin/taegyu/ci/backend-checks` (PR #2~#5가 차례로 쌓임) |
-| 관리자 웹·Firebase 함수 | 별도 저장소 `jmwshye/safeloop` |
+| 최신 작업자 앱 | `origin/taegyu/feat/app-nest-integration` (PR #10, #11~#17 위에 이어짐) |
+| 서버 | `origin/taegyu/feat/backend-safety-reports` (PR #7~#9가 차례로 쌓임) |
+| 관리자 웹 | 별도 저장소 `jmwshye/safeloop` (Firebase 연결 상태) |
 
-서버는 NestJS(`backend/`)로 통일하기로 합의했다(2026-11-02). Firebase는 푸시(FCM)에만 쓴다. 앱의 Firebase 직접 호출(`Repository.kt`)은 서버 이식이 끝나고 `backend/API.md`에 새 API가 정해지기 전에는 바꾸지 않는다. 앱 화면 작업은 체험 모드에서 계속한다.
+서버는 NestJS(`backend/`)로 통일하고 Firebase는 푸시(FCM)에만 쓴다(2026-11-02 합의). 합치는 순서는 `docs/STATUS.md`를 따른다.
 
 ## 제품 규칙
 
@@ -34,7 +34,7 @@
 - 119는 모든 기본 화면과 상세 화면에서 바로 누를 수 있어야 한다.
 - 출퇴근과 안전점검은 독립적이다. 점검을 하지 않아도 근로 기록을 막지 않는다.
 - 예상 일당은 실제 지급액이 아니라고 표시한다.
-- 사진은 구조를 늦추면 안 된다. 긴급 대응 사진은 안정된 뒤의 선택이며 사람이 아닌 현장을 찍는다. 현재 코드는 사진을 필수로 요구해 헌장과 다르다.
+- 사진은 구조를 늦추면 안 된다. 긴급 대응 사진은 안정된 뒤의 선택이며 사람이 아닌 현장을 찍는다.
 - 작업 전 교차 촬영에서는 위반 모습을 찍지 않고, 고친 뒤 찍는다.
 - 동료에게는 본인의 안전을 먼저 확보하라고 안내한다.
 - 원본 기록은 수정하지 않고 정정 기록을 추가한다.
