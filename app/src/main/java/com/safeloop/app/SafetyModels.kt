@@ -2,7 +2,7 @@ package com.safeloop.app
 
 import java.security.MessageDigest
 
-// [팀 공통 데이터 계약서] Firestore 'safety_events' 컬렉션에 저장될 엄격한 변수 타입 정의
+// 이전 로컬 센서 실험용 모델. 현재 앱의 NestJS 요청·서버 기록에는 사용하지 않음.
 data class SafetyEvent(
     val eventId: String = "",
     val incidentGroupId: String = "",
@@ -23,7 +23,7 @@ data class SafetyEvent(
     val currentEventHash: String = ""
 )
 
-// [위변조 방지 엔진] 직전 해시와 현재 데이터를 합쳐 64자리 SHA-256 암호 지문을 찍는 객체
+// 이전 로컬 해시 실험. 실제 기록의 해시 체인은 NestJS 서버에서 생성·검증.
 object HashChainEngine {
     var lastHash: String = "GENESIS_BLOCK_0000000000000000"
 
