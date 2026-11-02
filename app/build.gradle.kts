@@ -17,6 +17,7 @@ android {
  }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
+ testOptions { unitTests { isIncludeAndroidResources = true; all { it.systemProperty("roborazzi.test.record", "true"); it.maxHeapSize = "2g"; val temp = layout.buildDirectory.dir("tmp/test-jvm").get().asFile; temp.mkdirs(); it.systemProperty("java.io.tmpdir", temp.path) } } }
 }
 dependencies {
  constraints {
@@ -25,6 +26,12 @@ dependencies {
   }
  }
  testImplementation("junit:junit:4.13.2")
+ testImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+ testImplementation("androidx.compose.ui:ui-test-junit4")
+ debugImplementation("androidx.compose.ui:ui-test-manifest")
+ testImplementation("org.robolectric:robolectric:4.13")
+ testImplementation("io.github.takahirom.roborazzi:roborazzi:1.32.2")
+ testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.32.2")
  implementation(platform("androidx.compose:compose-bom:2024.12.01"))
  implementation("androidx.activity:activity-compose:1.9.3")
  implementation("androidx.compose.ui:ui")

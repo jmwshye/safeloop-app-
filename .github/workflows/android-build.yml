@@ -32,3 +32,8 @@ jobs:
         with:
           name: Android-test-results
           path: app/build/reports/tests/testDebugUnitTest/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Screen-captures
+          path: app/build/outputs/roborazzi/
