@@ -62,6 +62,7 @@ import androidx.compose.ui.window.DialogProperties
   }}
  }}
  val activeSheet=sheet
+ LaunchedEffect(activeSheet,state.calls.firstOrNull{activeSheet=="call:${it.id}"}?.status){if(activeSheet?.startsWith("call:")==true)controller.loadVerificationPhoto(activeSheet.removePrefix("call:"))}
  if(activeSheet!=null){AppSheet(sheetTitle(activeSheet),{sheet=null},actions.dial){
   controller.feedback?.let{SmallNote(it,amber=true)}
   when {
@@ -70,13 +71,15 @@ import androidx.compose.ui.window.DialogProperties
    activeSheet=="checklist"->ChecklistSheet(state,controller.busy){values->controller.saveChecks(values);sheet=null}
    activeSheet=="peer"->PeerSheet(state,controller.busy,actions.camera){observed,photo->controller.checkPeer(observed,photo);sheet=null}
    activeSheet=="profile"->EditProfileSheet(state){name,zone,wage->controller.saveWorkInfo(name,zone,wage);sheet=null}
-   activeSheet=="site"->{SLPill("체험 현장",amber=true);Text(state.site,fontSize=23.sp,fontWeight=FontWeight.Bold,color=Ink);DetailRow("작업 구역",state.zone);SmallNote("체험 기록은 이 기기에 저장됩니다.")}
+   activeSheet=="connect"->ConnectSheet(controller){sheet=null}
+   activeSheet=="site"->{SLPill(if(state.preview)"체험 현장" else "연결된 현장",amber=state.preview);Text(state.site,fontSize=23.sp,fontWeight=FontWeight.Bold,color=Ink);DetailRow("참여 코드",state.code);DetailRow("작업 구역",state.zone);DetailRow("안전 동료",state.buddyName);SmallNote(if(state.preview)"현재는 기능을 살펴보는 체험 모드예요. 실제 현장에 참여하려면 계정과 관리자 참여 코드를 연결해 주세요." else "이 현장의 근로·안전 기록을 앱과 관리자 대시보드에서 함께 확인합니다.");if(state.preview)SLButton("실제 현장 연결하기",{sheet="connect"},icon="link")}
    activeSheet=="requests"->{if(state.calls.isEmpty())EmptyState("bell","새로운 안전 확인 요청이 없어요","요청이 오면 휴대폰 알림과 이 화면에 표시돼요.");state.calls.forEach{call->CallSummary(call,state.uid){sheet="call:${call.id}"}}}
    activeSheet.startsWith("call:")->{val call=state.calls.firstOrNull{it.id==activeSheet.removePrefix("call:")};if(call!=null)CallSheet(call,state,controller.busy,actions.camera){response,photo->controller.respond(call.id,response,photo)}else EmptyState("bell","요청 정보를 불러오고 있어요","연결 상태를 확인해 주세요.")}
    activeSheet.startsWith("risk:")->{val risk=state.risks.firstOrNull{it.id==activeSheet.removePrefix("risk:")};if(risk!=null){SLPill(when(risk.status){"verified"->"재확인 완료";"resolved"->"재확인 대기";else->"미조치"},amber=risk.status!="verified");Text(risk.title,fontSize=23.sp,fontWeight=FontWeight.Bold,color=Ink);DetailRow("발견 위치",risk.zone);DetailRow("위험 유형",risk.category);DetailRow("이름 표시",if(risk.anonymous)"관리자에게 숨김" else "이름 표시");if(risk.photo!=null)PhotoPreview(risk.photo);if(risk.note.isNotBlank())Text(risk.note,fontSize=14.sp,lineHeight=23.sp,color=Muted);SmallNote("신고 → 조치 후 사진 → 다른 동료 재확인 순서로 처리됩니다. 조치와 안전 확인은 구분해 기록해요.")}}
    activeSheet=="privacy"->{Text("기록의 첫 번째 주인은 작업자입니다.",fontSize=21.sp,fontWeight=FontWeight.Bold,color=Ink);Text("근로 기록과 직접 확인한 사실, 센서의 추정을 구분해 보관해요. 사진은 현장 확인과 위험 조치에 사용합니다.",fontSize=14.sp,lineHeight=24.sp,color=Muted);SmallNote(if(state.preview)"체험 모드의 근로·안전 기록과 사진은 이 기기에만 저장돼요. 실제 현장에 전송되지 않습니다." else "현장 연결 모드에서는 필요한 확인 상태를 같은 현장의 동료와 책임자에게 공유해요.");Text("위치는 출근 확인에 사용하며 상시 추적하지 않습니다. 119 버튼은 전화 화면을 열며 실제 통화 연결이나 신고 접수를 증명하지 않아요.",fontSize=14.sp,lineHeight=24.sp,color=Muted)}
    activeSheet=="guide"->{listOf("01" to "휴대폰을 몸에 휴대해 주세요.","02" to "출근 후 필요한 작업 시간에 움직임 감시를 시작하세요.","03" to "충격과 이후 움직임 감소는 위험의 추정 신호예요. 모든 사고를 감지하지는 못합니다.","04" to "알림이 오면 상태를 확인하세요. 동료 요청을 받았다면 본인 안전을 먼저 확보하세요.","05" to "실제 위험한 상황이면 안전 확인 완료를 누르기보다 119에 연락하세요.").forEach{(n,text)->Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){Text(n,fontSize=12.sp,fontWeight=FontWeight.Bold,color=Forest);Text(text,fontSize=14.sp,lineHeight=23.sp,color=Ink)}};SmallNote("감시 중에는 배터리를 사용합니다. 잠금·절전·기기별 센서 동작은 실제 Android 기기로 확인해야 해요.",amber=true)}
    activeSheet=="reset"->{Text("이 기기의 체험 기록을 초기화할까요?",fontSize=20.sp,fontWeight=FontWeight.Bold,color=Ink);Text("추가한 체험용 출퇴근·점검·신고·안전 확인 기록이 초기화됩니다. 실제 서버 기록에는 영향을 주지 않아요.",fontSize=14.sp,lineHeight=23.sp,color=Muted);SLButton("체험 기록 초기화",{controller.resetPreview();sheet=null})}
+   activeSheet=="disconnect"->{Text("체험 모드로 전환할까요?",fontSize=20.sp,fontWeight=FontWeight.Bold,color=Ink);Text("현장 연결과 감시를 종료합니다. 서버의 기존 근로·안전 기록은 보존돼요.",fontSize=14.sp,lineHeight=23.sp,color=Muted);SLButton("체험 모드로 전환",{controller.usePreview();sheet=null})}
   }
  }}
  state.selfCall?.let{call->SelfCheckDialog(call,controller.now,controller.busy,{controller.respond(call.id,"safe")},actions.dial,state.preview)}
@@ -141,6 +144,16 @@ private fun sheetTitle(route:String)=when{
 
 @Composable private fun EditProfileSheet(s:WorkerState,onSave:(String,String,Int)->Unit){var name by remember{mutableStateOf(s.name)};var zone by remember{mutableStateOf(s.zone)};var wage by remember{mutableStateOf(s.wage.toString())}
  if(s.preview){SLField("이름",name,{name=it});SLField("작업 구역",zone,{zone=it});SLField("예상 일당 · 원",wage,{wage=it.filter(Char::isDigit).take(8)});SmallNote("변경한 예상 일당은 다음 출근 기록부터 적용됩니다.");SLButton("내 작업 정보 저장",{onSave(name,zone,wage.toIntOrNull()?:0)},enabled=name.isNotBlank()&&zone.isNotBlank()&&(wage.toIntOrNull()?:-1) in 0..10000000)}else{DetailRow("이름",s.name);DetailRow("작업 구역",s.zone);SmallNote("연결한 현장의 이름과 작업 구역 변경은 현장 책임자에게 문의해 주세요.")}
+}
+
+@Composable private fun ConnectSheet(controller:WorkerController,onFinish:()->Unit){var signUp by remember{mutableStateOf(false)};var name by remember{mutableStateOf(controller.state.name)};var email by remember{mutableStateOf("")};var password by remember{mutableStateOf("")};var code by remember{mutableStateOf("")};var zone by remember{mutableStateOf(controller.state.zone)}
+ SmallNote("관리자가 알려준 현장 코드와 본인 계정으로 연결해요. 체험 기록은 실제 현장 기록과 구분됩니다.")
+ ChoiceTabs(listOf("로그인","처음 이용해요"),if(signUp)1 else 0){signUp=it==1}
+ SLField("이름",name,{name=it});SLField("이메일",email,{email=it},"worker@example.com")
+ Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text("비밀번호",fontSize=13.sp,fontWeight=FontWeight.SemiBold,color=Ink);OutlinedTextField(password,{password=it},modifier=Modifier.fillMaxWidth(),singleLine=true,visualTransformation=PasswordVisualTransformation(),placeholder={Text("6자 이상",fontSize=14.sp)},shape=RoundedCornerShape(13.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedBorderColor=Line,focusedBorderColor=Forest))}
+ SLField("현장 참여 코드",code,{code=it.uppercase()},"관리자가 알려준 코드");SLField("작업 구역",zone,{zone=it},"예: 2층 · 설비 작업")
+ if(!controller.firebaseReady)SmallNote("이 빌드에는 현장 연결 설정이 없습니다. 체험 모드에서 앱을 확인할 수 있어요.",amber=true)
+ SLButton(if(controller.busy)"현장에 연결하고 있어요…" else "로그인하고 현장 연결",{controller.connect(email,password,name,code,zone,signUp,onFinish)},enabled=!controller.busy&&name.isNotBlank()&&email.isNotBlank()&&password.length>=6&&code.isNotBlank()&&zone.isNotBlank(),icon="link")
 }
 
 @Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now)
