@@ -18,3 +18,5 @@ local.properties
 .kotlin/
 **/build/
 app/google-services.json
+
+hs_err_pid*.log
