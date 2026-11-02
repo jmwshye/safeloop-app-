@@ -7,7 +7,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from './database/schema.js';
+import * as schema from './database/all-schema.js';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnApplicationShutdown {

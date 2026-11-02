@@ -4,11 +4,15 @@ import { test } from 'node:test';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../dist/app.module.js';
 import { DatabaseService } from '../dist/database.service.js';
+import { IncidentWorker } from '../dist/incidents/incident.worker.js';
+import { NoticesWorker } from '../dist/records/notices.worker.js';
 
 test('GET /health의 HTTP 응답', { timeout: 15_000 }, async (t) => {
   const previousUrl = process.env.DATABASE_URL;
   // 실제 DB에 접속하지 않고 HTTP 계약과 장애 처리만 검사한다.
   process.env.DATABASE_URL = 'postgresql://unused@127.0.0.1:1/health_test';
+  t.mock.method(IncidentWorker.prototype, 'onModuleInit', () => {});
+  t.mock.method(NoticesWorker.prototype, 'onApplicationBootstrap', () => {});
   let databaseDown = false;
   const probe = t.mock.method(
     DatabaseService.prototype,
@@ -32,8 +36,8 @@ test('GET /health의 HTTP 응답', { timeout: 15_000 }, async (t) => {
   await app.listen(0, '127.0.0.1');
   const baseUrl = await app.getUrl();
 
-  async function health() {
-    const response = await fetch(`${baseUrl}/health`, {
+  async function health(path = '/health') {
+    const response = await fetch(`${baseUrl}${path}`, {
       signal: AbortSignal.timeout(5000),
     });
     assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -52,13 +56,15 @@ test('GET /health의 HTTP 응답', { timeout: 15_000 }, async (t) => {
   });
 
   await t.test(
-    'DB 오류면 503, 내부 오류 정보는 응답에 포함하지 않음',
+    'DB 오류면 /health와 /health/ 모두 503, 내부 오류 정보는 숨김',
     async () => {
       databaseDown = true;
-      assert.deepEqual(await health(), {
-        status: 503,
-        body: { status: 'error', database: 'down' },
-      });
+      for (const path of ['/health', '/health/']) {
+        assert.deepEqual(await health(path), {
+          status: 503,
+          body: { status: 'error', database: 'down' },
+        });
+      }
       const root = await fetch(baseUrl, { signal: AbortSignal.timeout(5000) });
       assert.equal(root.status, 200);
       assert.equal(await root.text(), 'Hello World!');
