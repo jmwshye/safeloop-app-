@@ -8,6 +8,8 @@ android {
  namespace = "com.safeloop.app"
  compileSdk = 35
  defaultConfig { applicationId = "com.safeloop.app"; minSdk = 26; targetSdk = 35; versionCode = 2; versionName = "0.2.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+ defaultConfig { ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") } }
+ androidResources { noCompress += "tflite" }
  buildFeatures { compose = true; buildConfig = true }
  val apiUrl = providers.gradleProperty("SAFELOOP_API_URL").orNull
  fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
@@ -48,4 +50,5 @@ dependencies {
  implementation("com.google.firebase:firebase-messaging")
  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
  implementation("androidx.work:work-runtime-ktx:2.10.0")
+ implementation("com.google.mediapipe:tasks-vision:0.10.14")
 }

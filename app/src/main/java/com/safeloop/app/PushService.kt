@@ -54,7 +54,7 @@ class PushService : FirebaseMessagingService() {
                 .setAction("com.safeloop.app.DIAL_119").putExtra("dial119", true).putExtra("recipientId", repo.currentUser?.uid).putExtra("siteId", site).putExtra("callId", incident),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             notification.addAction(0, "현장 확인", pending).addAction(0, "119 전화 화면", dial).setFullScreenIntent(pending, true).setCategory(NotificationCompat.CATEGORY_ALARM)
-            SafetyAlarm.start(this, 10_000)
+            SafetyAlarm.start(this, 10_000, SafetySpeech.PEER_ALERT)
         }
         runCatching { nm.notify(id, notification.build()) }
     }

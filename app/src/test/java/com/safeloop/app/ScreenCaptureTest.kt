@@ -35,8 +35,9 @@ class ScreenCaptureTest {
     private val done = working.copy(checks = listOf("확인", "확인", "확인"), peerChecked = true, peerStatus = "photo_confirmed", monitoring = true,
         peerEvidence = listOf(PeerEvidence(working.uid, "b", "checked", 1000, "p"), PeerEvidence("preview-buddy", "a", "checked", 1000)))
     private val incoming = WorkerCall("c1", subject = "preview-buddy", subjectName = "박철수", zone = "2층 동측", stage = "peer", createdAt = System.currentTimeMillis(), deadline = System.currentTimeMillis() + 15_000)
-    private val own = WorkerCall("c2", subject = working.uid, subjectName = working.name, stage = "peer", createdAt = System.currentTimeMillis())
-    private val events = listOf(WorkerEvent("1", "출근 기록", "2층 · 설비 작업"), WorkerEvent("2", "이상 움직임 감지", "센서 추정 신호", estimate = true), WorkerEvent("3", "동료 수락", "박철수"))
+    private val own = WorkerCall("c2", subject = working.uid, subjectName = working.name, stage = "peer", createdAt = System.currentTimeMillis(), peakG = 3.4, dropMeters = 2.1)
+    private val events = listOf(WorkerEvent("3", "동료 수락", "박철수"), WorkerEvent("2", "이상 움직임 감지", "센서 추정 신호", estimate = true), WorkerEvent("1", "출근 기록", "2층 · 설비 작업"))
+        .foldRight(emptyList<WorkerEvent>()) { entry, chain -> listOf(entry.copy(hash = eventHash(chain.firstOrNull()?.hash.orEmpty(), entry))) + chain }
 
     private fun shot(name: String, content: @Composable ColumnScope.() -> Unit) {
         rule.setContent {
@@ -53,7 +54,7 @@ class ScreenCaptureTest {
     @Test fun today1BeforeWork() = shot("1-1-today-before") { HomePage(base) }
     @Test fun today2Tasks() = shot("1-2-today-tasks") { HomePage(working) }
     @Test fun today3Working() = shot("2-1-working") { HomePage(done) }
-    @Test fun today4MonitorOff() = shot("2-1-monitor-off") { HomePage(done.copy(monitoring = false, checks = listOf("확인", "모름", "확인"), peerChecked = false, peerStatus = "pending").let { it.copy(monitoring = true).copy(monitoring = true) }) }
+    @Test fun today4MonitorOff() = shot("2-1-monitor-off") { HomePage(done.copy(monitoring = false)) }
     @Test fun today5HighRisk() = shot("2-1-high-risk") { HomePage(done.copy(highRiskTask = "scaffold", highRiskStartedAt = 1000)) }
     @Test fun today6NotCarried() = shot("2-1-not-carried") { HomePage(done.copy(carried = false, deviceState = "not_carried")) }
     @Test fun today7After() = shot("today-after") { HomePage(working.checkout().copy(events = events)) }

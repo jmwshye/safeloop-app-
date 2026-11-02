@@ -64,6 +64,7 @@ class MainActivity:ComponentActivity(){
   WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=true;isAppearanceLightNavigationBars=true}
   controller=ViewModelProvider(this)[WorkerController::class.java]
   captures=ViewModelProvider(this)[WorkerCapture::class.java]
+  SafetySpeech.prepare(this)
   setupScope=savedInstanceState?.getString("setupScope")
   notificationScope=savedInstanceState?.getString("notificationScope")
   notificationAction=NotificationAction.entries.find{it.name==savedInstanceState?.getString("notificationAction")}
@@ -82,6 +83,7 @@ class MainActivity:ComponentActivity(){
     }
    }
    androidx.compose.runtime.LaunchedEffect(captures.failure){captures.failure?.let{controller.feedback=it}}
+   androidx.compose.runtime.LaunchedEffect(captures.notice){captures.notice?.let{controller.feedback=it}}
    WorkerTheme{
     androidx.compose.runtime.key(scope){WorkerApp(controller,WorkerActions(
      dial={dial()},capture=::capture,cameraResult=photo?.takeIf{it.scope==scope},consumeCamera=captures::consume,
@@ -119,7 +121,7 @@ class MainActivity:ComponentActivity(){
   else performNotificationAction(action)
  }
  private fun requestSetupPermissions(){
-  val permissions=mutableListOf(Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.CAMERA)
+  val permissions=mutableListOf(Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO)
   if(Build.VERSION.SDK_INT>=33)permissions+=Manifest.permission.POST_NOTIFICATIONS
   setupScope=controller.captureScope;setupPermissions.launch(permissions.toTypedArray())
  }

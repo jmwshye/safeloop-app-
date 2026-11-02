@@ -135,10 +135,12 @@ fun callStatus(c:WorkerCall,uid:String)=if(c.serverStatus=="unanswered")"수락�
  OnCameraResult(actions,"risk_before","new"){photo=it.path}
  if(tab==0)ScreenHead("발견한 위험을\n알려 주세요") else ScreenTitle("현장 위험 현황")
  if(tab==0){
+  VoiceReportButton{spoken->val heard=parseRiskSpeech(spoken);category=heard.category;heard.zone?.let{zone=it};note=heard.note}
   Text("종류",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)
   val kinds=listOf("추락","넘어짐","충돌","감전","기타");PickRow(kinds,kinds.indexOf(category)){category=kinds[it]}
   PhotoCapture(photo,"위험 요소를 찍어요","사람이 아니라 위험한 곳만 찍어요"){actions.capture("risk_before","new")}
   SLField("위치",zone,{zone=it},"예: 2층 동측 개구부")
+  if(note.isNotBlank())SLCard{Text("들은 내용",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted);SLField("고칠 내용이 있으면 고쳐 주세요",note,{note=it},singleLine=false)}
   SLCard{Row(verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("이름 숨기기",fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("사업주에게 신고자가 보이지 않아요",fontSize=14.sp,color=Muted)};Switch(anonymous,{anonymous=it},colors=SwitchDefaults.colors(checkedTrackColor=Brand))}}
   SLButton(if(busy)"신고를 저장하고 있어요…" else "신고 보내기",{onSubmit(title,zone,category,note,anonymous,photo){title="";note="";photo=null;tab=1}},enabled=!busy&&zone.isNotBlank(),icon="arrow")
   GhostButton("현장 위험 현황으로 돌아가기",{tab=1})
@@ -185,7 +187,7 @@ private fun riskStatusLabel(risk:WorkerRisk)=when(risk.status){"verified"->"재�
   val rows=s.events.filter{!s.preview||java.time.Instant.ofEpochMilli(it.time).atZone(koreaZone).toLocalDate().toString()==selectedDay}.sortedBy{it.time}
   if(rows.isEmpty())SLCard{EmptyState("records","아직 확인 기록이 없어요","출근과 점검, 동료 확인부터 시작해 보세요.")}
   else FlatBox{rows.forEach{entry->TimelineRow(clockText(entry.time),entry.title,entry.detail.ifBlank{null},estimate=entry.estimate,onClick={onSheet("event:${entry.id}")})}}
-  if(s.preview&&s.events.size>1)Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("기록 변경 탐지",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted);if(chainIntact(s.events))SLPill("변경 없음",fact=true)else SLPill("변경 의심",amber=true)}
+  if(s.preview&&s.events.size>1&&s.events.all{it.hash.isNotBlank()})Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("기록 변경 탐지",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted);if(chainIntact(s.events))SLPill("변경 없음",fact=true)else SLPill("변경 의심",amber=true)}
   Text("기록은 사업주가 지울 수 없어요. 잘못된 내용은 정정 기록으로만 고칠 수 있어요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
   if(s.nextTimeline!=null)SLButton("기록 더 보기",onMore,secondary=true)
   SLButton("내 근로 기록 보기",{tab=0})

@@ -85,7 +85,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  private fun tickPrompts(){val next=advancePrompts(state.prompts,now);if(next==state.prompts)return
   val before=state.prompts.associateBy{it.id};update(state.copy(prompts=next))
   next.forEach{prompt->val was=before[prompt.id]?.state
-   if(was=="scheduled"&&prompt.state=="pending")notifyPreview("안전하신가요?","휴식 복귀 때라 한 번만 물어요.",prompt.id,openCall=false)
+   if(was=="scheduled"&&prompt.state=="pending"){notifyPreview("안전하신가요?","휴식 복귀 때라 한 번만 물어요.",prompt.id,openCall=false);SafetySpeech.say(app,SafetySpeech.CHECK_IN)}
    if(was=="pending"&&prompt.state=="unverified")event("체크인 응답 없음","안전 미확인",true)
   }
  }
@@ -188,7 +188,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   if(state.preview)update(state.copy(emergencyPush=emergency,sitePush=site))else{repository.request("PUT","/me/notification-preferences",mapOf("emergencyPush" to emergency,"sitePush" to site));changed()}
  }
  @Suppress("DEPRECATION") fun refreshMonitoring(){val active=(app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getRunningServices(100).any{it.service.className==SafetyService::class.java.name};state=state.copy(monitoring=active)}
- private fun readPreviewSensor(){if(!state.preview)return;val id=monitoringPrefs.getString("previewSignalId",null)?:return;if(monitoringPrefs.getString("previewProcessed",null)==id)return;val at=monitoringPrefs.getLong("previewSignalAt",now);update(state.copy(calls=listOf(WorkerCall(id,subject=state.uid,subjectName=state.name,zone=state.zone,deadline=at+15000,createdAt=at))+state.calls));event("이상 움직임 감지","센서 추정 신호",true);monitoringPrefs.edit().putString("previewProcessed",id).apply()}
+ private fun readPreviewSensor(){if(!state.preview)return;val id=monitoringPrefs.getString("previewSignalId",null)?:return;if(monitoringPrefs.getString("previewProcessed",null)==id)return;val at=monitoringPrefs.getLong("previewSignalAt",now);update(state.copy(calls=listOf(WorkerCall(id,subject=state.uid,subjectName=state.name,zone=state.zone,deadline=at+15000,createdAt=at,peakG=monitoringPrefs.getFloat("previewSignalPeak",0f).takeIf{it>0f}?.toDouble(),dropMeters=monitoringPrefs.getFloat("previewSignalDrop",0f).takeIf{it>0f}?.toDouble()))+state.calls));event("이상 움직임 감지","센서 추정 신호",true);monitoringPrefs.edit().putString("previewProcessed",id).apply()}
  fun simulateSelf(){if(!state.preview)return;if(state.activeCalls.any{it.isSubject(state.uid)})return;val call=WorkerCall(UUID.randomUUID().toString(),subject=state.uid,subjectName=state.name,zone=state.zone,createdAt=now);update(state.copy(calls=listOf(call)+state.calls));event("체험 이상 신호","사고 확정 아님",true);notifyPreview("괜찮으세요?","15초 안에 안전 상태를 확인해 주세요.",call.id)}
  fun simulatePrompt(){if(!state.preview)return;val prompt=WorkPrompt(UUID.randomUUID().toString(),"break_return",now,"pending");update(state.copy(prompts=state.prompts+prompt));requestedRoute="prompt:${prompt.id}"}
  fun simulateIncoming(){if(!state.preview)return;val call=WorkerCall(UUID.randomUUID().toString(),subject="preview-buddy",subjectName=state.buddyName,zone=state.buddyZone,stage="peer",createdAt=now);update(state.copy(calls=listOf(call)+state.calls));openCallId=call.id}

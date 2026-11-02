@@ -42,7 +42,7 @@ data class WorkerCall(
  val stage:String="self",val status:String="pending",val deadline:Long=System.currentTimeMillis()+15000,
  val acceptedBy:String?=null,val arrivedAt:Long?=null,val photo:String?=null,val resolution:String?=null,val overdue:Boolean=false,
  val serverStatus:String="",val observation:String?=null,val photoId:String?=null,val recipients:List<CallRecipient> = emptyList(),
- val detailLoaded:Boolean=true,val latitude:Double?=null,val longitude:Double?=null,val accuracy:Double?=null,val workerResponse:String?=null,val createdAt:Long=0,val respondedAt:Long?=null,val acceptedAt:Long?=null,val dialTimes:List<Long> = emptyList(),val observationNotice:String?=null
+ val detailLoaded:Boolean=true,val latitude:Double?=null,val longitude:Double?=null,val accuracy:Double?=null,val workerResponse:String?=null,val createdAt:Long=0,val respondedAt:Long?=null,val acceptedAt:Long?=null,val dialTimes:List<Long> = emptyList(),val observationNotice:String?=null,val peakG:Double?=null,val dropMeters:Double?=null
 ) {
  fun isSubject(uid:String)=subject==uid
  fun remainingSeconds(now:Long)=((deadline-now+999)/1000).coerceAtLeast(0)

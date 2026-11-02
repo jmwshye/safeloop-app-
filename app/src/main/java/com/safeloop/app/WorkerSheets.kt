@@ -160,6 +160,7 @@ private val WarnInk=Color(0xFF5E3A00)
  SLButton("괜찮아요, 제가 응답할게요",{onRespond("safe",null)},enabled=!busy,secondary=true)
  if(c.workerResponse=="okay")GhostButton("도움이 필요해요",{onRespond("help",null)},enabled=!busy)
  s.foremanPhone?.let{phone->SLButton("반장님께 전화",{onPhone(phone)},secondary=true,icon="phone")}
+ if(SafetyAlarm.beaconOn)GhostButton("사이렌·손전등 끄기",{SafetyAlarm.stop()})
  if(s.preview)GhostButton("체험: 호출 실패 화면 보기",onFailed)
 }
 @Composable private fun CallRow(name:String,role:String,status:String){Row(Modifier.fillMaxWidth().padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Column(Modifier.weight(1f)){Text(name,fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(role,fontSize=14.sp,color=Muted)};SLPill(status,neutral=status!="수락")}}
@@ -168,7 +169,7 @@ private fun recipientStatus(r:CallRecipient)=when{r.declinedAt!=null->"참여 �
 
 @Composable private fun IncomingCall(c:WorkerCall,s:WorkerState,now:Long,busy:Boolean,actions:WorkerActions,onFailed:()->Unit,onRespond:(String,String?)->Unit){
  val invited=s.preview||c.recipients.any{it.id==s.uid&&it.declinedAt==null};val context=LocalContext.current
- DisposableEffect(c.id){SafetyAlarm.start(context,10_000);onDispose{SafetyAlarm.stop()}}
+ DisposableEffect(c.id){SafetyAlarm.start(context,10_000,"${c.subjectName} 님이 응답하지 않아요. 내 안전을 먼저 확보하세요.");onDispose{SafetyAlarm.stop()}}
  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){SLPill(if(s.preview)"체험 호출" else "긴급 호출",danger=true);if(c.deadline>now)SLPill("${c.remainingSeconds(now)}초 안에 응답",amber=true)}
  ScreenHead("${c.subjectName} 님이\n응답하지 않아요")
  FlatBox{
@@ -310,7 +311,7 @@ private fun recipientStatus(r:CallRecipient)=when{r.declinedAt!=null->"참여 �
  TimelineLegend()
  FlatBox{
   s.peerEvidence.firstOrNull()?.let{TimelineRow(clockText(it.checkedAt),"보호구 교차 확인","${s.buddyName} 님과")}
-  if(c.createdAt>0)TimelineRow(clockText(c.createdAt),"강한 충격 감지","시스템이 추정",estimate=true)
+  if(c.createdAt>0)TimelineRow(clockText(c.createdAt),"강한 충격 감지",impactDetail(c),estimate=true)
   if(c.stage=="peer"&&c.respondedAt==null)TimelineRow(clockText(c.deadline),"본인 무응답 · 동료 호출","시스템 기록",estimate=true)
   c.respondedAt?.let{TimelineRow(clockText(it),"본인 응답","사람이 확인")}
   c.acceptedAt?.let{TimelineRow(clockText(it),"동료 수락","사람이 확인")}
@@ -327,7 +328,7 @@ private fun recipientStatus(r:CallRecipient)=when{r.declinedAt!=null->"참여 �
 // 6-2 기록과 개인정보
 @Composable fun PrivacySheet(preview:Boolean){
  ScreenHead("기록은\n내 것이에요")
- FlatBox{listOf("근로 기록" to "출퇴근, 근무 시간, 예상 일당","확인 기록과 사진" to "동료와 서로 찍은 사진, 위험 신고","위치" to "출근 확인과 긴급 상황에서만 써요","움직임 센서" to "이상 신호 전후의 짧은 구간만 저장해요").forEachIndexed{i,(title,detail)->if(i>0)HorizontalDivider(color=Line);Column(Modifier.padding(vertical=12.dp)){Text(title,fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(detail,fontSize=14.sp,lineHeight=22.sp,color=Muted)}}}
+ FlatBox{listOf("근로 기록" to "출퇴근, 근무 시간, 예상 일당","확인 기록과 사진" to "동료와 서로 찍은 사진, 위험 신고","위치" to "출근 확인과 긴급 상황에서만 써요","움직임 센서" to "이상 신호 전후의 짧은 구간만 저장해요","마이크" to "말로 도움을 요청하고 신고할 때만 듣고, 녹음은 저장하지 않아요","사진 속 얼굴" to "폰 안에서 자동으로 가리고 밖으로 보내지 않아요").forEachIndexed{i,(title,detail)->if(i>0)HorizontalDivider(color=Line);Column(Modifier.padding(vertical=12.dp)){Text(title,fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(detail,fontSize=14.sp,lineHeight=22.sp,color=Muted)}}}
  SLCard(color=OkSoft){Text("내가 할 수 있는 일",fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("· 언제든 내 기록을 보고 내보낼 수 있어요\n· 사업주는 내 기록을 지울 수 없어요\n· 위험 신고는 이름을 숨길 수 있어요",fontSize=14.sp,lineHeight=22.sp,color=Ink)}
  if(preview)SmallNote("체험 모드의 기록과 사진은 이 기기에만 저장돼요. 실제 현장에 전송되지 않습니다.")
  NoteText("119 버튼은 전화 화면을 열어요. 실제 통화 연결이나 신고 접수를 증명하지 않아요.")

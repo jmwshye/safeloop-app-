@@ -7,7 +7,7 @@ import java.util.UUID
 
 internal fun previewIncidentLines(call: WorkerCall): List<String> = buildList {
     add("작업자 · ${call.subjectName} / ${call.zone}")
-    if (call.createdAt > 0) add("시스템 기록 · ${clockText(call.createdAt)} 감지 또는 체험 호출 생성")
+    if (call.createdAt > 0) add("시스템 기록 · ${clockText(call.createdAt)} 감지 또는 체험 호출 생성 · ${impactDetail(call)}")
     call.respondedAt?.let { add("사람이 확인 · ${clockText(it)} 본인 응답") }
     call.arrivedAt?.let { add("사람이 확인 · ${clockText(it)} 현장 도착") }
     call.dialTimes.lastOrNull()?.let { add("기록 · ${clockText(it)} 119 전화 화면 열림. 통화 연결 여부는 별도 확인 필요") }
