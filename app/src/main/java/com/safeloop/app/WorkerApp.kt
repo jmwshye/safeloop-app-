@@ -50,6 +50,7 @@ import androidx.compose.ui.window.DialogProperties
     when(page){
      WorkerPage.TODAY->HomePage(state,controller.now,::open,::navigate,actions.monitor)
      WorkerPage.SAFETY->SafetyPage(state,::open,actions.monitor)
+     WorkerPage.REPORT->ReportPage(state,controller.busy,actions.camera,controller::submitRisk,::open)
      WorkerPage.RECORDS->RecordsPage(state,actions.export,::open)
      WorkerPage.PROFILE->ProfilePage(state,::open,actions.notificationSettings)
     }
@@ -66,6 +67,7 @@ import androidx.compose.ui.window.DialogProperties
    activeSheet=="peer"->PeerSheet(state,controller.busy,actions.camera){observed,photo->controller.checkPeer(observed,photo);sheet=null}
    activeSheet=="profile"->EditProfileSheet(state){name,zone,wage->controller.saveWorkInfo(name,zone,wage);sheet=null}
    activeSheet=="site"->{SLPill("체험 현장",amber=true);Text(state.site,fontSize=23.sp,fontWeight=FontWeight.Bold,color=Ink);DetailRow("작업 구역",state.zone);SmallNote("체험 기록은 이 기기에 저장됩니다.")}
+   activeSheet.startsWith("risk:")->{val risk=state.risks.firstOrNull{it.id==activeSheet.removePrefix("risk:")};if(risk!=null){SLPill(when(risk.status){"verified"->"재확인 완료";"resolved"->"재확인 대기";else->"미조치"},amber=risk.status!="verified");Text(risk.title,fontSize=23.sp,fontWeight=FontWeight.Bold,color=Ink);DetailRow("발견 위치",risk.zone);DetailRow("위험 유형",risk.category);DetailRow("이름 표시",if(risk.anonymous)"관리자에게 숨김" else "이름 표시");if(risk.photo!=null)PhotoPreview(risk.photo);if(risk.note.isNotBlank())Text(risk.note,fontSize=14.sp,lineHeight=23.sp,color=Muted);SmallNote("신고 → 조치 후 사진 → 다른 동료 재확인 순서로 처리됩니다. 조치와 안전 확인은 구분해 기록해요.")}}
    activeSheet=="privacy"->{Text("기록의 첫 번째 주인은 작업자입니다.",fontSize=21.sp,fontWeight=FontWeight.Bold,color=Ink);Text("근로 기록과 직접 확인한 사실, 센서의 추정을 구분해 보관해요. 사진은 현장 확인과 위험 조치에 사용합니다.",fontSize=14.sp,lineHeight=24.sp,color=Muted);SmallNote(if(state.preview)"체험 모드의 근로·안전 기록과 사진은 이 기기에만 저장돼요. 실제 현장에 전송되지 않습니다." else "현장 연결 모드에서는 필요한 확인 상태를 같은 현장의 동료와 책임자에게 공유해요.");Text("위치는 출근 확인에 사용하며 상시 추적하지 않습니다. 119 버튼은 전화 화면을 열며 실제 통화 연결이나 신고 접수를 증명하지 않아요.",fontSize=14.sp,lineHeight=24.sp,color=Muted)}
    activeSheet=="guide"->{listOf("01" to "휴대폰을 몸에 휴대해 주세요.","02" to "출근 후 필요한 작업 시간에 움직임 감시를 시작하세요.","03" to "충격과 이후 움직임 감소는 위험의 추정 신호예요. 모든 사고를 감지하지는 못합니다.","04" to "알림이 오면 상태를 확인하세요. 동료 요청을 받았다면 본인 안전을 먼저 확보하세요.","05" to "실제 위험한 상황이면 안전 확인 완료를 누르기보다 119에 연락하세요.").forEach{(n,text)->Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){Text(n,fontSize=12.sp,fontWeight=FontWeight.Bold,color=Forest);Text(text,fontSize=14.sp,lineHeight=23.sp,color=Ink)}};SmallNote("감시 중에는 배터리를 사용합니다. 잠금·절전·기기별 센서 동작은 실제 Android 기기로 확인해야 해요.",amber=true)}
    activeSheet=="reset"->{Text("이 기기의 체험 기록을 초기화할까요?",fontSize=20.sp,fontWeight=FontWeight.Bold,color=Ink);Text("추가한 체험용 출퇴근·점검·신고·안전 확인 기록이 초기화됩니다. 실제 서버 기록에는 영향을 주지 않아요.",fontSize=14.sp,lineHeight=23.sp,color=Muted);SLButton("체험 기록 초기화",{controller.resetPreview();sheet=null})}
