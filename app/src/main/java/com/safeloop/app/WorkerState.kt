@@ -31,7 +31,7 @@ fun responseLabel(response:String)=when{response=="safe"->"본인 응답 · 괜�
 fun parseTime(value: Any?): Long? = runCatching { Instant.parse(value?.toString()).toEpochMilli() }.getOrNull()
 
 data class WorkEntry(val id:String,val day:String,val start:Long,val end:Long?=null,val wage:Int=180000,val sample:Boolean=false,val wageKnown:Boolean=true,val site:String="",val zone:String="",val siteId:String="",val occupation:String="")
-data class WorkerEvent(val id:String,val title:String,val detail:String,val time:Long=System.currentTimeMillis(),val estimate:Boolean=false,val canCorrect:Boolean=false,val siteId:String="")
+data class WorkerEvent(val id:String,val title:String,val detail:String,val time:Long=System.currentTimeMillis(),val estimate:Boolean=false,val canCorrect:Boolean=false,val siteId:String="",val hash:String="")
 data class WorkerRisk(val id:String,val title:String,val zone:String,val note:String,val category:String="기타",val status:String="open",val photo:String?=null,val time:Long=System.currentTimeMillis(),val anonymous:Boolean=true,val beforePhotoId:String?=null,val afterPhotoId:String?=null,val afterPhoto:String?=null,val fixerName:String?=null,val verifierName:String?=null,val fixedAt:Long?=null,val verifiedAt:Long?=null,val canRecheck:Boolean=false)
 data class WorkPrompt(val id:String,val kind:String,val dueAt:Long,val state:String,val response:String?=null)
 data class PeerEvidence(val checkerId:String,val subjectAttendanceId:String,val outcome:String,val checkedAt:Long,val photoId:String?=null,val photo:String?=null)

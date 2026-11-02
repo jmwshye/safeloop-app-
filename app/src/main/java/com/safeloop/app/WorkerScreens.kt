@@ -49,7 +49,7 @@ data class WorkerActions(
  SLCard(Modifier.clickable{onSheet("site")}){
   Text("오늘의 현장",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)
   Text(s.site,fontSize=21.sp,fontWeight=FontWeight.ExtraBold,color=Ink)
-  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){when(s.beforeLocation){"inside"->SLPill("현장 안에 있어요");"outside"->SLPill("현장 밖이에요",amber=true);else->SLPill("위치 미확인",neutral=true)};if(s.code.isNotBlank())SLPill("현장 코드 ${s.code}",neutral=true)}
+  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){if(s.preview)SLPill("현장 안 · 체험 예시") else when(s.beforeLocation){"inside"->SLPill("현장 안에 있어요");"outside"->SLPill("현장 밖이에요",amber=true);else->SLPill("위치 미확인",neutral=true)};if(s.code.isNotBlank())SLPill("현장 코드 ${s.code}",neutral=true)}
  }
  FlatCard(listOf("오늘 할 일" to s.workOccupation,"작업 위치" to s.workZone,"예상 일당" to if(s.wageKnown)"${moneyText(s.wage)}원" else "미입력"))
  Text("예상 일당은 내 기록용이에요. 실제 지급액과 다를 수 있어요. 작업 전 확인은 출근한 뒤에 해도 돼요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
@@ -185,6 +185,7 @@ private fun riskStatusLabel(risk:WorkerRisk)=when(risk.status){"verified"->"재�
   val rows=s.events.filter{!s.preview||java.time.Instant.ofEpochMilli(it.time).atZone(koreaZone).toLocalDate().toString()==selectedDay}.sortedBy{it.time}
   if(rows.isEmpty())SLCard{EmptyState("records","아직 확인 기록이 없어요","출근과 점검, 동료 확인부터 시작해 보세요.")}
   else FlatBox{rows.forEach{entry->TimelineRow(clockText(entry.time),entry.title,entry.detail.ifBlank{null},estimate=entry.estimate,onClick={onSheet("event:${entry.id}")})}}
+  if(s.preview&&s.events.size>1)Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Text("기록 변경 탐지",fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted);if(chainIntact(s.events))SLPill("변경 없음",fact=true)else SLPill("변경 의심",amber=true)}
   Text("기록은 사업주가 지울 수 없어요. 잘못된 내용은 정정 기록으로만 고칠 수 있어요.",fontSize=14.sp,lineHeight=22.sp,color=Muted)
   if(s.nextTimeline!=null)SLButton("기록 더 보기",onMore,secondary=true)
   SLButton("내 근로 기록 보기",{tab=0})

@@ -96,6 +96,7 @@ class SafetyService : Service(), SensorEventListener {
             prefs.getString("signalSite", null) == monitorSite && prefs.getString("signalAttendance", null) == prefs.getString("attendanceId", null)) return
         val detectedAt = Instant.now()
         val localId = UUID.randomUUID().toString()
+        SafetyAlarm.start(this)
         prefs.edit().putString("localAlert", localId).remove("localCallId").remove("signalFailed").apply()
         if (prefs.getBoolean("previewMonitoring", false)) {
             prefs.edit().putLong("previewSignalAt", System.currentTimeMillis()).putString("previewSignalId", localId).apply()
@@ -159,7 +160,7 @@ class SafetyService : Service(), SensorEventListener {
             .putExtra("siteId", monitorSite).putExtra("recipientId", monitorUid).putExtra("callId", call), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         runCatching { getSystemService(NotificationManager::class.java).notify(103, NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("안전 확인이 필요합니다").setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body)).setContentIntent(open)
-            .addAction(0, "상태 확인", open).addAction(0, "119 전화 화면", dial).setPriority(NotificationCompat.PRIORITY_HIGH).setCategory(NotificationCompat.CATEGORY_ALARM).setAutoCancel(true).build()) }
+            .addAction(0, "상태 확인", open).addAction(0, "119 전화 화면", dial).setFullScreenIntent(open, true).setPriority(NotificationCompat.PRIORITY_HIGH).setCategory(NotificationCompat.CATEGORY_ALARM).setAutoCancel(true).build()) }
     }
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
     override fun onDestroy() {

@@ -11,6 +11,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -108,7 +109,7 @@ import androidx.compose.ui.window.DialogProperties
    activeSheet.startsWith("prompt:")->PromptSheet(state.prompts.firstOrNull{it.id==activeSheet.removePrefix("prompt:")},controller.busy){answer->controller.answerPrompt(activeSheet.removePrefix("prompt:"),answer);sheet=null}
    activeSheet=="notifications"->{Row(verticalAlignment=Alignment.CenterVertically){Text("긴급 안전 확인",Modifier.weight(1f));Switch(state.emergencyPush,{controller.notificationPreferences(it,state.sitePush)},enabled=!controller.busy)};Row(verticalAlignment=Alignment.CenterVertically){Text("현장 점검·조치 알림",Modifier.weight(1f));Switch(state.sitePush,{controller.notificationPreferences(state.emergencyPush,it)},enabled=!controller.busy)};SLButton("휴대폰 알림 권한 설정",actions.notificationSettings,secondary=true)}
    activeSheet=="export"->ExportSheet(state,actions.export,actions.shareReport,controller::loadMoreIncidents){sheet="report:$it"}
-   activeSheet.startsWith("event:")->{val entry=state.events.firstOrNull{it.id==activeSheet.removePrefix("event:")};if(entry!=null){EventRow(entry,state.preview);DetailRow("원본 기록 ID",entry.id);DetailRow("서버 저장 시각",java.time.Instant.ofEpochMilli(entry.time).atZone(koreaZone).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));if(state.preview||entry.canCorrect){var note by remember(entry.id){mutableStateOf("")};SLField("정정할 내용",note,{note=it},singleLine=false);SLButton("원본을 보존하고 정정 요청",{controller.correctEvent(entry.id,note);sheet=null},enabled=!controller.busy&&note.isNotBlank())}}}
+   activeSheet.startsWith("event:")->{val entry=state.events.firstOrNull{it.id==activeSheet.removePrefix("event:")};if(entry!=null){EventRow(entry,state.preview);DetailRow("원본 기록 ID",entry.id);if(entry.hash.isNotBlank())DetailRow("기록 연결값",entry.hash.take(12));DetailRow("서버 저장 시각",java.time.Instant.ofEpochMilli(entry.time).atZone(koreaZone).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));if(state.preview||entry.canCorrect){var note by remember(entry.id){mutableStateOf("")};SLField("정정할 내용",note,{note=it},singleLine=false);SLButton("원본을 보존하고 정정 요청",{controller.correctEvent(entry.id,note);sheet=null},enabled=!controller.busy&&note.isNotBlank())}}}
    activeSheet=="corrections"->{if(state.corrections.isEmpty())SmallNote("정정 요청이 없어요.");state.corrections.forEach{Text(it,color=Ink)}}
    activeSheet=="privacy"->PrivacySheet(state.preview)
    activeSheet=="guide"->GuideSheet()
@@ -152,7 +153,8 @@ private fun sheetTitle(route:String)=when{
 }
 
 // 3-1 본인 확인 15초. 탭을 숨기고 괜찮아요와 119만 크게 보여준다.
-@Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now);val bars=WindowInsets.safeDrawing.asPaddingValues()
+@Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now);val bars=WindowInsets.safeDrawing.asPaddingValues();val context=LocalContext.current
+ DisposableEffect(call.id){SafetyAlarm.start(context,remaining*1000);onDispose{SafetyAlarm.stop()}}
  Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false,usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
   Surface(Modifier.fillMaxSize(),color=Color.White){Column(Modifier.fillMaxSize().padding(bars)){
    TapeStrip()

@@ -11,6 +11,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -83,7 +84,7 @@ private val WarnInk=Color(0xFF5E3A00)
  FlatCard(buildList{
   s.peerEvidence.forEach{check->add((if(check.checkerId==s.uid)"${s.name} → ${s.buddyName}" else "${s.buddyName} → ${s.name}") to (if(s.preview&&check.checkerId!=s.uid)"체험 예시" else if(check.photoId!=null)"사진" else "진술"))}
   s.peerEvidence.maxOfOrNull{it.checkedAt}?.let{add("확인 시각" to clockText(it))}
-  add("위치" to locationLabel(s.locationStatus))
+  add("위치" to if(s.preview)"현장 안 · 체험 예시" else locationLabel(s.locationStatus))
   add("사진" to if(s.peerStatus=="photo_confirmed")"저장됨" else "없음")
  })
  s.peerEvidence.firstNotNullOfOrNull{it.photo}?.let{PhotoPreview(it)}
@@ -137,7 +138,7 @@ private val WarnInk=Color(0xFF5E3A00)
  OnCameraResult(actions,"scene",c.id){photo=it.path}
  when{
   c.status=="closed"->CallClosed(c,s)
-  c.isSubject(s.uid)->CallingPeers(c,s,busy,onDial,actions.phone,onFailed,onRespond)
+  c.isSubject(s.uid)->CallingPeers(c,s,now,busy,onDial,actions.phone,onFailed,onRespond)
   c.acceptedBy!=null&&c.acceptedBy!=s.uid->{ScreenHead("다른 동료가\n확인 중이에요","본인의 안전을 먼저 확보해 주세요.");FlatCard(listOf("작업자" to c.subjectName,"위치" to c.zone))}
   c.acceptedBy==null->IncomingCall(c,s,now,busy,actions,onFailed,onRespond)
   c.arrivedAt==null->GoingToCall(c,s,busy,actions,onRespond)
@@ -145,11 +146,11 @@ private val WarnInk=Color(0xFF5E3A00)
   else->WrapUpCall(c,busy,photo,actions,onRespond)
  }
 }
-@Composable private fun CallingPeers(c:WorkerCall,s:WorkerState,busy:Boolean,onDial:()->Unit,onPhone:(String)->Unit,onFailed:()->Unit,onRespond:(String,String?)->Unit){
+@Composable private fun CallingPeers(c:WorkerCall,s:WorkerState,now:Long,busy:Boolean,onDial:()->Unit,onPhone:(String)->Unit,onFailed:()->Unit,onRespond:(String,String?)->Unit){
  SLPill("안전 미확인",amber=true,estimate=true)
  ScreenHead("동료를 부르고 있어요","안전 동료와 반장님께 알렸어요. 움직일 수 있으면 119를 누르세요.")
  FlatBox{
-  if(s.preview){CallRow(s.buddyName,"안전 동료","체험 · 실제 전송 안 됨");HorizontalDivider(color=Line);CallRow("반장님","현장 책임자 · 동시 통보","체험 · 실제 전송 안 됨")}
+  if(s.preview){CallRow(s.buddyName,"안전 동료","체험 · 실제 전송 안 됨");HorizontalDivider(color=Line);CallRow("반장님","현장 책임자 · 동시 통보","체험 · 실제 전송 안 됨");HorizontalDivider(color=Line);val wait=((c.deadline+30_000-now+999)/1000).coerceAtLeast(0);CallRow("같은 구역 동료",c.zone,if(wait>0)"${wait}초 뒤 요청" else "체험 · 호출 확대됨")}
   else if(c.recipients.isEmpty())StepRow("호출 대상을 확인하고 있어요"){SLPill("대기",neutral=true)}
   else c.recipients.forEachIndexed{i,recipient->if(i>0)HorizontalDivider(color=Line);CallRow(recipient.name,recipientRole(recipient.role),recipientStatus(recipient))}
  }
@@ -166,7 +167,8 @@ private fun recipientRole(role:String)=when(role){"buddy"->"안전 동료";"fore
 private fun recipientStatus(r:CallRecipient)=when{r.declinedAt!=null->"참여 어려움";r.acceptedAt!=null->"수락";r.openedAt!=null->"열람";r.receivedAt!=null->"알림 도착";r.delivery=="sent"->"발송 · 수신 미확인";r.delivery=="unavailable"->"발송 불가";r.delivery=="failed"->"발송 실패";r.delivery=="cancelled"->"발송 취소";else->"발송 대기"}
 
 @Composable private fun IncomingCall(c:WorkerCall,s:WorkerState,now:Long,busy:Boolean,actions:WorkerActions,onFailed:()->Unit,onRespond:(String,String?)->Unit){
- val invited=s.preview||c.recipients.any{it.id==s.uid&&it.declinedAt==null}
+ val invited=s.preview||c.recipients.any{it.id==s.uid&&it.declinedAt==null};val context=LocalContext.current
+ DisposableEffect(c.id){SafetyAlarm.start(context,10_000);onDispose{SafetyAlarm.stop()}}
  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){SLPill(if(s.preview)"체험 호출" else "긴급 호출",danger=true);if(c.deadline>now)SLPill("${c.remainingSeconds(now)}초 안에 응답",amber=true)}
  ScreenHead("${c.subjectName} 님이\n응답하지 않아요")
  FlatBox{
@@ -287,6 +289,13 @@ private fun recipientStatus(r:CallRecipient)=when{r.declinedAt!=null->"참여 �
  SLCard(color=BrandSoft){Text("이렇게 쓸 수 있어요",fontSize=16.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("고용보험 근로내역과 비교해서 빠진 날을 찾고, 사업주에게 정정을 요청할 때 근거로 쓸 수 있어요.",fontSize=14.sp,lineHeight=22.sp,color=Ink)}
  val valid=runCatching{val start=java.time.LocalDate.parse(from);val end=java.time.LocalDate.parse(to);!end.isBefore(start)&&java.time.temporal.ChronoUnit.DAYS.between(start,end)<=365}.getOrDefault(false)
  SLButton("내보내기",{if(s.preview)previewExport(from,to,format,null)else share("/reports/work?from=$from&to=$to&format=$format",format)},enabled=valid,icon="download")
+ if(s.preview){
+  val month=java.time.YearMonth.now(koreaZone).toString();val summary=monthlySummary(s,month)
+  SectionHeading("월간 근로일·안전확인 집계")
+  FlatCard(listOf("근로일" to "${summary.workDays}일","작업 전 확인" to "${summary.checklists}회","동료 교차 확인" to "${summary.peerChecks}회","위험 신고" to "${summary.risks}건","안전 확인 요청" to "${summary.safetyCalls}건"))
+  NoteText("안전 확인 요청은 사고 건수가 아니에요.")
+  SLButton("월간 집계 PDF",{previewExport(month,month,"pdf","monthly")},secondary=true,icon="download")
+ }
  SectionHeading("사고 경위 보고서")
  val mine=s.calls.filter{it.isSubject(s.uid)&&(s.preview||it.id in s.reportCallIds)}
  if(mine.isEmpty())NoteText("현재 조회한 달의 본인 사고 기록이 없어요.")
