@@ -301,6 +301,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  // 서버에 닿지 않으면 입력한 이름으로 체험 모드를 시작한다. 실제 가입으로 표시하지 않는다.
  fun continueOffline(name:String)=action {serverDown=false;feedback=null;enterPreview();if(name.isNotBlank())update(state.copy(name=name.trim()));onboarding="profile"}
  fun usePreview()=action {enterPreview()}
+ fun changeServer(url:String)=action {val clean=url.trim().trimEnd('/');NestHttp(clean,BuildConfig.DEBUG);repository.serverUrl=clean;serverDown=false;feedback="서버 주소를 저장했어요. 다시 시도해 주세요."}
  private suspend fun enterPreview() {
   generation++;polling?.cancel();app.stopService(Intent(app,SafetyService::class.java))
   try {repository.logout()} finally {
