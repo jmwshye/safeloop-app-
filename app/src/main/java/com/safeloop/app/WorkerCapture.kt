@@ -45,7 +45,7 @@ class WorkerCapture(private val application: Application, private val saved: Sav
         return true
     }
     fun cancel() {
-        file?.delete()
+        file?.path?.let(::deleteCapture)
         saved.remove<Bundle>("request")
     }
     fun finish(mismatch: Boolean) {
@@ -85,7 +85,7 @@ class WorkerCapture(private val application: Application, private val saved: Sav
             it.getString("path"), it.getBoolean("mismatch"))
     }
     fun consume() { saved.remove<Bundle>("result"); result = null }
-    fun discardResult() { result?.path?.let { File(it).delete() }; consume() }
+    fun discardResult() { result?.path?.let(::deleteCapture); consume() }
 }
 
 @Composable
@@ -98,6 +98,14 @@ fun OnCameraResult(actions: WorkerActions, guide: String, subject: String, recei
         }
     }
 }
+
+/** 얼굴을 가린 사진 옆에 두는 원본의 경로. 얼굴이 없으면 원본 파일을 따로 만들지 않는다. */
+internal fun originalPathOf(path: String) = path.removeSuffix(".jpg") + ".original.jpg"
+
+/** 찍고 나서 확인할 때 보여 줄 사진. 원본이 있으면 원본을 쓴다. */
+fun reviewPathOf(path: String) = originalPathOf(path).takeIf { File(it).exists() } ?: path
+
+fun deleteCapture(path: String) { File(path).delete(); File(originalPathOf(path)).delete() }
 
 private fun prepareCapture(context: android.content.Context, file: File, keepChin: Boolean): Pair<String, Int> {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -112,10 +120,11 @@ private fun prepareCapture(context: android.content.Context, file: File, keepChi
         else -> 0f
     }
     val bitmap = if (degrees == 0f) original else Bitmap.createBitmap(original, 0, 0, original.width, original.height, Matrix().apply { postRotate(degrees) }, true)
-    // 얼굴을 찾지 못해도 사진 저장은 막지 않는다.
+    // 얼굴을 찾지 못해도 사진 저장은 막지 않는다. 가린 사진을 기록에 쓰고 원본은 옆에 따로 둔다.
     val (masked, faces) = runCatching { FaceMask.cover(context, bitmap, keepChin) }.getOrDefault(bitmap to 0)
     val temp = File(file.parentFile, file.name + ".tmp")
     try {
+        if (faces > 0) File(originalPathOf(file.path)).outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it)) }
         temp.outputStream().use { check(masked.compress(Bitmap.CompressFormat.JPEG, 85, it)) }
         java.nio.file.Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     } finally {

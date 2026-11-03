@@ -2,6 +2,7 @@ package com.safeloop.app
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,7 +12,7 @@ import java.util.Locale
 /** 작업 중에는 화면을 볼 수 없으므로 긴급 안내를 소리로 읽어 준다. 폰의 음성 엔진을 쓰며 인터넷이 필요 없다. */
 object SafetySpeech {
     // 듣기 기능이 안내 음성을 사람 말로 착각하지 않도록 응답 말(괜찮아요, 도와줘)을 넣지 않는다.
-    const val SELF_CHECK = "강한 충격이 감지되었어요. 상태를 말씀해 주세요."
+    const val SELF_CHECK = "충격이 감지되었어요. 말씀해 주세요."
     const val CALLING = "동료를 부르고 있어요. 움직일 수 있으면 119를 누르세요."
     const val RECORDING = "도움을 요청했어요. 상황을 영상으로 남기고 있어요."
     const val CHECK_IN = "안전하신가요? 괜찮으시면 앱에서 괜찮아요를 눌러 주세요."
@@ -20,6 +21,7 @@ object SafetySpeech {
     private var engine: TextToSpeech? = null
     private var ready = false
     private var pending: String? = null
+    private var volume = 1f
     /** 한국어 음성을 쓸 수 없는 폰이면 true. 이때는 진동과 소리로만 알린다. */
     var unavailable by mutableStateOf(false)
         private set
@@ -50,13 +52,15 @@ object SafetySpeech {
         if (engine == null) unavailable = true
     }
 
-    fun say(context: Context, text: String) {
+    /** 말을 듣는 동안에는 마이크에 덜 들어가도록 volume을 낮춘다. */
+    fun say(context: Context, text: String, volume: Float = 1f) {
         if (!enabled(context)) return
+        this.volume = volume
         prepare(context)
         if (ready) speak(text) else pending = text
     }
 
-    private fun speak(text: String) { runCatching { engine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "safety") } }
+    private fun speak(text: String) { runCatching { engine?.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume) }, "safety") } }
 
     fun stop() {
         pending = null

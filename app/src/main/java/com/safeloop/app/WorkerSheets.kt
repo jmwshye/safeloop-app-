@@ -46,7 +46,8 @@ private val WarnInk=Color(0xFF5E3A00)
   s.peerChecked->PeerDone(s,onDone)
   observed=="착용"&&photo!=null->{
    ScreenHead("이 사진으로\n저장할까요?",s.buddyName+" 님의 안전모·턱끈·안전대가 보이면 충분해요.")
-   PhotoPreview(photo!!)
+   PhotoPreview(reviewPathOf(photo!!))
+   NoteText("기록에 저장할 때 얼굴은 자동으로 가려요.")
    SLButton("사진과 확인 저장",{onSave("착용",photo)},enabled=ready,icon="check")
    SLButton("다시 찍기",capture,enabled=ready,secondary=true,icon="camera")
   }
