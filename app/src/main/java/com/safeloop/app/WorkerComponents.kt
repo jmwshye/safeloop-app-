@@ -126,7 +126,7 @@ private fun cardEdge(color:Color)=when(color){Color.White->Line;BrandSoft->Color
 @Composable fun DoneMark(){Box(Modifier.size(88.dp).background(Ok,CircleShape),contentAlignment=Alignment.Center){SLIcon("check",Modifier.size(48.dp),Color.White)}}
 // 시각표. 실선 점은 사람이 확인, 점선 점은 시스템이 추정
 @Composable fun TimelineRow(time:String,title:String,detail:String?=null,estimate:Boolean=false,pending:Boolean=false,onClick:(()->Unit)?=null,extra:@Composable ColumnScope.()->Unit={}){Row(Modifier.fillMaxWidth().then(if(onClick!=null)Modifier.clickable(onClick=onClick)else Modifier).padding(vertical=9.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){
- Text(time,Modifier.width(46.dp),fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)
+ Text(time,Modifier.widthIn(min=46.dp),fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted,maxLines=1,softWrap=false)
  Box(Modifier.padding(top=5.dp).size(12.dp).then(if(estimate)Modifier.drawBehind{val w=2.dp.toPx();drawCircle(Amber,size.minDimension/2-w/2,style=Stroke(width=w,pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),2.dp.toPx()))))}else Modifier.background(if(pending)Color(0xFF7A8896)else Brand,CircleShape)))
  Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(title,fontSize=16.sp,lineHeight=22.sp,fontWeight=FontWeight.Bold,color=Ink);if(detail!=null)Text(detail,fontSize=14.sp,lineHeight=21.sp,color=Muted);extra()}
 }}
