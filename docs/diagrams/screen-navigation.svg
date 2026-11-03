@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="1292" viewBox="0 0 440 1292" role="img" lang="ko" aria-labelledby="title desc">
+  <title id="title">와이어프레임의 화면 이동</title>
+  <desc id="desc">시작·현장 연결 → 출근 → 작업 전 3가지 → 동료와 서로 찍기 → 작업 중. 언제든 위험 신고 가능. 충격이 없으면 퇴근, 충격이 있으면 15초 본인 확인. 괜찮다고 응답하면 작업 중으로 복귀. 무응답이면 동료·책임자 호출 → 수락·도착·상태 확인 → 119 전화 또는 정상 처리 → 퇴근. 퇴근 후 오늘의 기록과 보고서로 이동.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#9cabb9"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: Pretendard, 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; text-anchor: middle }
+    .nodes text { font-size: 25px; font-weight: 600; fill: #ecf0f3 }
+    .nodes rect, .nodes path { fill: #20262d; stroke: #556372; stroke-width: 1.5 }
+    .work rect, .done rect { fill: #19372e; stroke: #44765f }
+    .decision path, .emergency rect { fill: #302c23; stroke: #867344 }
+    .labels text { font-size: 22px; font-weight: 600; fill: #cfdae3 }
+  </style>
+  <rect width="440" height="1292" rx="16" fill="#101215"/>
+  <g fill="none" stroke="#9cabb9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)">
+    <path data-from="A" data-to="B" d="M186 78 V103"/>
+    <path data-from="B" data-to="C" d="M186 164 V189"/>
+    <path data-from="C" data-to="D" d="M186 250 V275"/>
+    <path data-from="D" data-to="E" d="M186 336 V361"/>
+    <path data-from="E" data-to="F" d="M186 448 V483"/>
+    <path data-from="F" data-to="G" data-label="없음" d="M292 540 H393 Q403 540 403 550 V1052 Q403 1062 393 1062 H313"/>
+    <path data-from="F" data-to="H" data-label="있음" d="M186 594 V643"/>
+    <path data-from="H" data-to="E" data-label="괜찮아요" d="M116 676 H20 Q10 676 10 666 V416 Q10 406 20 406 H48"/>
+    <path data-from="H" data-to="I" data-label="무응답" d="M186 706 V759"/>
+    <path data-from="I" data-to="J" d="M186 820 V846"/>
+    <path data-from="J" data-to="K" d="M186 911 V937"/>
+    <path data-from="K" data-to="G" d="M186 1002 V1030"/>
+    <path data-from="G" data-to="L" d="M186 1091 V1118"/>
+    <path data-from="E" data-to="M" data-label="언제든" stroke-dasharray="4 5" d="M233 407 H306"/>
+    <path data-from="L" data-to="N" d="M186 1179 V1206"/>
+  </g>
+  <g class="nodes">
+    <g id="node-A" class="normal">
+      <rect x="62" y="20" width="248" height="58" rx="12"/>
+      <text x="186" y="57">시작·현장 연결</text>
+    </g>
+    <g id="node-B" class="normal">
+      <rect x="62" y="106" width="248" height="58" rx="12"/>
+      <text x="186" y="143">출근</text>
+    </g>
+    <g id="node-C" class="normal">
+      <rect x="62" y="192" width="248" height="58" rx="12"/>
+      <text x="186" y="229">작업 전 3가지</text>
+    </g>
+    <g id="node-D" class="normal">
+      <rect x="62" y="278" width="248" height="58" rx="12"/>
+      <text x="186" y="315">동료와 서로 찍기</text>
+    </g>
+    <g id="node-E" class="work">
+      <rect x="51" y="364" width="182" height="84" rx="12"/>
+      <text x="142" y="400"><tspan x="142">작업 중:</tspan><tspan x="142" dy="30">폰은 주머니에</tspan></text>
+    </g>
+    <g id="node-M" class="risk">
+      <rect x="309" y="371" width="123" height="66" rx="12"/>
+      <text x="370.5" y="412">위험 신고</text>
+    </g>
+    <g id="node-F" class="decision">
+      <path d="M186 486 L292 540 L186 594 L80 540 Z"/>
+      <text x="186" y="548">강한 충격 감지</text>
+    </g>
+    <g id="node-H" class="emergency">
+      <rect x="116" y="646" width="170" height="60" rx="12"/>
+      <text x="201" y="684">본인 확인 15초</text>
+    </g>
+    <g id="node-I" class="emergency">
+      <rect x="62" y="762" width="248" height="58" rx="12"/>
+      <text x="186" y="799">동료·책임자 호출</text>
+    </g>
+    <g id="node-J" class="normal">
+      <rect x="37" y="849" width="298" height="62" rx="12"/>
+      <text x="186" y="888">수락 → 도착 → 상태 확인</text>
+    </g>
+    <g id="node-K" class="normal">
+      <rect x="42" y="940" width="288" height="62" rx="12"/>
+      <text x="186" y="979">119 전화 또는 정상 처리</text>
+    </g>
+    <g id="node-G" class="done">
+      <rect x="62" y="1033" width="248" height="58" rx="12"/>
+      <text x="186" y="1070">퇴근</text>
+    </g>
+    <g id="node-L" class="normal">
+      <rect x="62" y="1121" width="248" height="58" rx="12"/>
+      <text x="186" y="1158">오늘의 기록</text>
+    </g>
+    <g id="node-N" class="done">
+      <rect x="26" y="1209" width="320" height="62" rx="12"/>
+      <text x="186" y="1248">근로 기록·사고 경위 보고서</text>
+    </g>
+  </g>
+  <g class="labels">
+    <text x="345" y="529">없음</text>
+    <text x="218" y="627">있음</text>
+    <text x="66" y="664">괜찮아요</text>
+    <text x="233" y="742">무응답</text>
+    <text x="270" y="396">언제든</text>
+  </g>
+</svg>

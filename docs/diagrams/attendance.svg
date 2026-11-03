@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="282" viewBox="0 0 1040 282" role="img" aria-labelledby="title desc">
+  <title id="title">출근 기록을 먼저 저장하고 퇴근까지 이어지는 흐름</title>
+  <desc id="desc">출근하기 → 출근 시각 저장 → 본인 3항목과 동료 보호구 확인 → 퇴근 시각 저장과 감시 종료. GPS가 없으면 위치 미확인. 같은 날 같은 현장의 출근은 기존 기록 사용. 점검을 건너뛰어도 출근 기록 유지.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#697b8e"/>
+    </marker>
+  </defs>
+  <rect width="1040" height="282" rx="18" fill="#101215"/>
+  <g font-family="Pretendard, 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif">
+    <text x="32" y="42" fill="#a9b3bd" font-size="17">출근부터 퇴근까지</text>
+    <g fill="none" stroke="#697b8e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)">
+      <path d="M206 123 H264"/>
+      <path d="M471 123 H533"/>
+      <path d="M744 123 H804"/>
+      <path d="M367 168 V220 Q367 228 375 228 H903 Q911 228 911 220 V171" stroke-dasharray="4 5"/>
+    </g>
+    <g fill="#1d2229" stroke="#39424e" stroke-width="1.3">
+      <rect x="32" y="78" width="168" height="90" rx="12"/>
+      <rect x="539" y="78" width="199" height="90" rx="12"/>
+    </g>
+    <g fill="#18342b" stroke="#396956" stroke-width="1.3">
+      <rect x="270" y="78" width="195" height="90" rx="12"/>
+      <rect x="810" y="78" width="198" height="90" rx="12"/>
+    </g>
+    <g text-anchor="middle" font-size="22" font-weight="600">
+      <text x="116" y="116" fill="#e4e9ef">출근하기</text>
+      <text x="368" y="116" fill="#b8f0d7">출근 시각 저장</text>
+      <text x="639" y="116" fill="#e4e9ef">작업 전 확인</text>
+      <text x="909" y="116" fill="#b8f0d7">퇴근 시각 저장</text>
+    </g>
+    <g text-anchor="middle" fill="#a9b3bd" font-size="15">
+      <text x="116" y="145">위치 권한은 선택</text>
+      <text x="368" y="145">GPS가 없으면 위치 미확인</text>
+      <text x="639" y="145">본인 3항목 · 동료 보호구</text>
+      <text x="909" y="145">퇴근하기 → 감시 종료</text>
+    </g>
+    <text x="639" y="214" text-anchor="middle" fill="#a9b3bd" font-size="17">점검을 건너뛰어도 출근 기록 유지</text>
+  </g>
+</svg>

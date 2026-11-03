@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="415" viewBox="0 0 1040 415" role="img" aria-labelledby="title desc">
+  <title id="title">작업자 앱과 관리자 웹의 공용 API 연결 구조</title>
+  <desc id="desc">공용 서버 구성. 작업자 앱과 관리자 웹 → HTTPS → Nginx → NestJS. 근무·안전 기록은 Drizzle을 거쳐 PostgreSQL에 저장. 푸시는 NestJS → FCM → 작업자 앱. 체험 기록과 상황 영상은 폰에만 저장.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#697b8e"/>
+    </marker>
+  </defs>
+  <rect width="1040" height="415" rx="18" fill="#101215"/>
+  <rect x="320" y="103" width="689" height="217" rx="14" fill="#14171b" stroke="#303842" stroke-width="1.3"/>
+  <g font-family="Pretendard, 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif">
+    <text x="342" y="136" font-size="16" fill="#a9b3bd">공용 서버 구성 · AWS EC2 서울</text>
+    <g fill="none" stroke="#697b8e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M215 167 H251 Q259 167 259 175 V214"/>
+      <path d="M215 275 H251 Q259 275 259 267 V214"/>
+      <path d="M259 214 H340" marker-end="url(#arrow)"/>
+      <path d="M506 214 H558" marker-end="url(#arrow)"/>
+      <path d="M731 214 H814" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+      <path d="M648 167 V63 Q648 55 640 55 H507" marker-end="url(#arrow)"/>
+      <path d="M308 55 H130 Q122 55 122 63 V122" marker-end="url(#arrow)"/>
+    </g>
+    <g fill="#1d2229" stroke="#39424e" stroke-width="1.3">
+      <rect x="32" y="128" width="180" height="78" rx="12"/>
+      <rect x="32" y="236" width="180" height="78" rx="12"/>
+      <rect x="345" y="170" width="156" height="88" rx="12"/>
+      <rect x="564" y="170" width="160" height="88" rx="12"/>
+      <rect x="309" y="24" width="192" height="62" rx="12"/>
+    </g>
+    <path d="M822 179 C822 153 980 153 980 179 V247 C980 273 822 273 822 247 Z" fill="#18342b" stroke="#396956" stroke-width="1.3"/>
+    <ellipse cx="901" cy="179" rx="79" ry="17" fill="#18342b" stroke="#396956" stroke-width="1.3"/>
+    <g fill="#e4e9ef" font-size="22" font-weight="600" text-anchor="middle">
+      <text x="122" y="163">작업자 앱</text>
+      <text x="122" y="271">관리자 웹</text>
+      <text x="423" y="207">Nginx</text>
+      <text x="644" y="207">NestJS</text>
+      <text x="901" y="222" fill="#b8f0d7">PostgreSQL</text>
+      <text x="405" y="63">FCM</text>
+    </g>
+    <g fill="#a9b3bd" font-size="15" text-anchor="middle">
+      <text x="122" y="189">근무·안전 기록 입력</text>
+      <text x="122" y="297">현장 조회·조치</text>
+      <text x="423" y="238">HTTPS 요청 전달</text>
+      <text x="644" y="238">앱·웹 공용 API</text>
+      <text x="901" y="247">근무·안전 기록</text>
+      <text x="290" y="201">HTTPS</text>
+      <text x="774" y="198">Drizzle</text>
+      <text x="580" y="43">알림 발송</text>
+      <text x="215" y="43">푸시 수신</text>
+      <text x="423" y="291">Certbot · 인증서 갱신</text>
+    </g>
+    <path d="M32 346 H1008" stroke="#303842" stroke-width="1"/>
+    <text x="32" y="384" fill="#b8f0d7" font-size="17" font-weight="600">폰에만 저장</text>
+    <text x="159" y="384" fill="#c5cdd5" font-size="17">체험 모드 기록 · 도움 요청 때 촬영한 상황 영상</text>
+  </g>
+</svg>

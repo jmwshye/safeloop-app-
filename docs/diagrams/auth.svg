@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="322" viewBox="0 0 1040 322" role="img" aria-labelledby="title desc" lang="ko">
+  <title id="title">로그인과 현장 참여</title>
+  <desc id="desc">새 계정은 회원가입 후 앱에서 자동 로그인. 기존 계정은 이메일과 비밀번호로 로그인. 로그인은 7일간 유지. 참여한 현장이 없으면 코드를 입력하고 현장 이름과 반장을 확인한 뒤 참여. 한 곳이면 바로 이동하고 여러 곳이면 선택. 체험 기록은 계정 없이 이 폰에만 저장.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="7" markerHeight="7" viewBox="0 0 10 10" refX="9" refY="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#697b8e"/>
+    </marker>
+  </defs>
+  <rect width="1040" height="322" rx="18" fill="#101215"/>
+  <g font-family="Pretendard, 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif">
+    <g fill="none" stroke="#697b8e" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow)">
+      <path d="M216 67 H240 Q252 67 252 79 V99 Q252 111 264 111 H288"/>
+      <path d="M216 169 H240 Q252 169 252 157 V137 Q252 125 264 125 H288"/>
+      <path d="M468 118 H513"/>
+      <path d="M703 118 H726 Q738 118 738 106 V79 Q738 67 750 67 H786"/>
+      <path d="M703 118 H726 Q738 118 738 130 V157 Q738 169 750 169 H786"/>
+      <path d="M216 270 H288" stroke-dasharray="3 5"/>
+    </g>
+    <g fill="#1d2229" stroke="#39424e" stroke-width="1.3">
+      <rect x="30" y="30" width="186" height="74" rx="12"/>
+      <rect x="30" y="132" width="186" height="74" rx="12"/>
+      <rect x="288" y="80" width="180" height="76" rx="12"/>
+      <rect x="513" y="80" width="190" height="76" rx="12"/>
+      <rect x="30" y="244" width="186" height="52" rx="12"/>
+    </g>
+    <g fill="#18342b" stroke="#396956" stroke-width="1.3">
+      <rect x="786" y="30" width="224" height="74" rx="12"/>
+      <rect x="786" y="132" width="224" height="74" rx="12"/>
+    </g>
+    <g text-anchor="middle" font-size="20" font-weight="600">
+      <g fill="#e4e9ef">
+        <text x="123" y="63">회원가입</text>
+        <text x="123" y="165">기존 계정</text>
+        <text x="378" y="115">로그인</text>
+        <text x="608" y="115">내 현장 조회</text>
+      </g>
+      <g fill="#b8f0d7">
+        <text x="898" y="63">현장 코드로 참여</text>
+        <text x="898" y="165">기존 현장으로 이동</text>
+      </g>
+    </g>
+    <g fill="#b2bcc7" font-size="15" text-anchor="middle">
+      <text x="123" y="88">가입 후 자동 로그인</text>
+      <text x="123" y="190">이메일·비밀번호 입력</text>
+      <text x="378" y="141">7일간 유지</text>
+      <text x="608" y="141">로그인 유지 시 여기부터</text>
+      <text x="898" y="88">현장 이름·반장 확인 후 참여</text>
+      <text x="898" y="190">한 곳은 바로, 여러 곳은 선택</text>
+      <text x="757" y="56">없음</text>
+      <text x="757" y="191">있음</text>
+    </g>
+    <path d="M30 225 H1010" stroke="#303740"/>
+    <text x="123" y="277" text-anchor="middle" font-size="18" fill="#d0d8e0" font-weight="500">체험 먼저 해보기</text>
+    <text x="304" y="277" font-size="18" fill="#b2bcc7">계정 없이 시작 · 체험 기록은 이 폰에만 저장</text>
+  </g>
+</svg>
