@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import sharp from 'sharp';
 import { DatabaseService } from '../database.service.js';
 import { photos, type photoPurposes } from '../database/record-schema.js';
@@ -21,7 +21,66 @@ export class PhotosService {
     bytes: Buffer,
   ) {
     await siteAccess(this.database.db, siteId, ownerId);
-    let sanitized: Buffer;
+    const sanitized = await this.sanitize(bytes);
+    return this.database.db.transaction(async (tx) => {
+      // Unattached photos represent abandoned camera submissions, not evidence.
+      await tx
+        .delete(photos)
+        .where(
+          and(
+            isNull(photos.entityId),
+            lt(photos.createdAt, new Date(Date.now() - 86_400_000)),
+          ),
+        );
+      const [photo] = await tx
+        .insert(photos)
+        .values({ siteId, ownerId, purpose, bytes: sanitized })
+        .returning({ id: photos.id, purpose: photos.purpose });
+      return photo;
+    });
+  }
+
+  /** The app masks faces before upload; the unmasked copy stays with the uploader only. */
+  async attachOriginal(
+    siteId: string,
+    ownerId: string,
+    id: string,
+    bytes: Buffer,
+  ) {
+    await siteAccess(this.database.db, siteId, ownerId);
+    const sanitized = await this.sanitize(bytes);
+    const [updated] = await this.database.db
+      .update(photos)
+      .set({ originalBytes: sanitized })
+      .where(
+        and(
+          eq(photos.id, id),
+          eq(photos.siteId, siteId),
+          eq(photos.ownerId, ownerId),
+        ),
+      )
+      .returning({ id: photos.id });
+    if (!updated) throw new ForbiddenException();
+  }
+
+  async readOriginal(siteId: string, userId: string, id: string) {
+    await siteAccess(this.database.db, siteId, userId);
+    const [photo] = await this.database.db
+      .select({ bytes: photos.originalBytes })
+      .from(photos)
+      .where(
+        and(
+          eq(photos.siteId, siteId),
+          eq(photos.id, id),
+          eq(photos.ownerId, userId),
+          isNotNull(photos.originalBytes),
+        ),
+      );
+    if (!photo?.bytes) throw new NotFoundException();
+    return photo.bytes;
+  }
+
+  private async sanitize(bytes: Buffer) {
     try {
       const input = sharp(bytes, {
         limitInputPixels: 32_000_000,
@@ -31,7 +90,7 @@ export class PhotosService {
       if (!['jpeg', 'png', 'webp'].includes(format) || (pages ?? 1) > 1)
         throw new Error();
       // Re-encoding strips EXIF (including GPS), file names and embedded thumbnails.
-      sanitized = await input
+      return await input
         .rotate()
         .resize({
           width: 1920,
@@ -50,22 +109,6 @@ export class PhotosService {
         },
       });
     }
-    return this.database.db.transaction(async (tx) => {
-      // Unattached photos represent abandoned camera submissions, not evidence.
-      await tx
-        .delete(photos)
-        .where(
-          and(
-            isNull(photos.entityId),
-            lt(photos.createdAt, new Date(Date.now() - 86_400_000)),
-          ),
-        );
-      const [photo] = await tx
-        .insert(photos)
-        .values({ siteId, ownerId, purpose, bytes: sanitized })
-        .returning({ id: photos.id, purpose: photos.purpose });
-      return photo;
-    });
   }
 
   async read(siteId: string, userId: string, id: string) {

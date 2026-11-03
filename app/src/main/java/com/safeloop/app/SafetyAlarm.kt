@@ -37,7 +37,7 @@ object SafetyAlarm {
         stop()
         val app = context.applicationContext
         if (listening) pulse(app, 700) else vibrate(app)
-        if (voice != null) SafetySpeech.say(app, voice)
+        if (voice != null) SafetySpeech.say(app, voice, if (listening) .6f else 1f)
         if (!listening) ringAfter(app, if (voice != null && SafetySpeech.enabled(app)) VOICE_MS else 0)
         handler.postDelayed(stopLater, durationMs.coerceAtLeast(1_000))
     }

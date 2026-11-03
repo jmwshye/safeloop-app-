@@ -161,6 +161,42 @@ export class RecordsController {
     );
     response.type('image/jpeg').send(bytes);
   }
+  @Put('photos/:id/original')
+  @HttpCode(204)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { files: 1, fileSize: 5 * 1024 * 1024, fields: 0, parts: 1 },
+    }),
+  )
+  async attachOriginal(
+    @Param('siteId') site: string,
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+    @UploadedFile() file?: { buffer: Buffer },
+  ) {
+    if (!file?.buffer?.length) throw new BadRequestException();
+    await this.media.attachOriginal(
+      site,
+      req.user.id,
+      parseInput(uuidInput, id),
+      file.buffer,
+    );
+  }
+  @Get('photos/:id/original')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async readOriginal(
+    @Param('siteId') site: string,
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+    @Res() response: Response,
+  ) {
+    const bytes = await this.media.readOriginal(
+      site,
+      req.user.id,
+      parseInput(uuidInput, id),
+    );
+    response.type('image/jpeg').send(bytes);
+  }
   @Delete('photos/:id')
   @HttpCode(204)
   discard(

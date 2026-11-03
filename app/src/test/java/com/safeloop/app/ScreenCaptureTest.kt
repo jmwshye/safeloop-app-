@@ -6,12 +6,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -39,12 +42,15 @@ class ScreenCaptureTest {
     private val events = listOf(WorkerEvent("3", "동료 수락", "박철수"), WorkerEvent("2", "이상 움직임 감지", "센서 추정 신호", estimate = true), WorkerEvent("1", "출근 기록", "2층 · 설비 작업"))
         .foldRight(emptyList<WorkerEvent>()) { entry, chain -> listOf(entry.copy(hash = eventHash(chain.firstOrNull()?.hash.orEmpty(), entry))) + chain }
 
-    private fun shot(name: String, content: @Composable ColumnScope.() -> Unit) {
+    /** fontScale 1.5는 시험 폰(글자 1.5배)과 같은 크기다. */
+    private fun shot(name: String, fontScale: Float = 1f, content: @Composable ColumnScope.() -> Unit) {
         rule.setContent {
-            WorkerTheme {
-                ProvideTextStyle(TextStyle(fontFamily = font)) {
-                    Column(Modifier.fillMaxSize().background(CanvasColor).verticalScroll(rememberScrollState()).padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
+                WorkerTheme {
+                    ProvideTextStyle(TextStyle(fontFamily = font)) {
+                        Column(Modifier.fillMaxSize().background(CanvasColor).verticalScroll(rememberScrollState()).padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+                    }
                 }
             }
         }
@@ -86,4 +92,9 @@ class ScreenCaptureTest {
             days.flatMap { d -> listOf("작업 전 확인", "동료 교차 확인").map { WorkerEvent("$it$d", it, "", d.atTime(9, 0).atZone(koreaZone).toInstant().toEpochMilli()) } }), false)
     }
     @Test fun temperature() = shot("6-4-temperature") { TemperatureSheet(safetyTemperature(done.work, events + listOf(WorkerEvent("c", "작업 전 확인", ""), WorkerEvent("p", "동료 교차 확인", ""))), true) }
+    @Test fun temperatureLarge() = shot("large-6-4-temperature", 1.5f) { TemperatureSheet(safetyTemperature(done.work, events + listOf(WorkerEvent("c", "작업 전 확인", ""), WorkerEvent("p", "동료 교차 확인", ""))), true) }
+    @Test fun profileLarge() = shot("large-6-1-profile", 1.5f) { ProfilePage(base, {}, {}) }
+    @Test fun afterLarge() = shot("large-today-after", 1.5f) { HomePage(working.checkout().copy(events = events, calls = listOf(own.copy(status = "closed")))) }
+    @Test fun riskListLarge() = shot("large-4-2-risks", 1.5f) { ReportPage(base, false, actions, { _, _, _, _, _, _, _ -> }, {}) }
+    @Test fun timelineLarge() = shot("large-5-2-timeline", 1.5f) { RecordsPage(done.copy(events = events), {}, {}, openTimeline = true) }
 }

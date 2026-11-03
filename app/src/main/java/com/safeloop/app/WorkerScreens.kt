@@ -131,7 +131,7 @@ fun callStatus(c:WorkerCall,uid:String)=if(c.serverStatus=="unanswered")"수락�
 @Composable fun CallSummary(c:WorkerCall,uid:String,onClick:()->Unit){Surface(Modifier.fillMaxWidth().clickable(onClick=onClick),color=if(c.status=="closed")OkSoft else PaleAmber,shape=RoundedCornerShape(16.dp)){
  Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
   SLIcon(if(c.status=="closed")"shield" else "bell",tint=if(c.status=="closed")Ok else Amber)
-  Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)){Text("${c.subjectName} 님 · ${callStatus(c,uid)}",fontSize=15.sp,fontWeight=FontWeight.Bold,color=if(c.status=="closed")Ok else Amber);Text(c.zone,fontSize=13.sp,color=Muted)};SLIcon("chevron",Modifier.size(17.dp),Muted)
+  Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)){Text(callStatus(c,uid),fontSize=15.sp,fontWeight=FontWeight.Bold,color=if(c.status=="closed")Ok else Amber);Text(listOf("${c.subjectName} 님",c.zone).filter{it.isNotBlank()}.joinToString(" · "),fontSize=13.sp,color=Muted)};SLIcon("chevron",Modifier.size(17.dp),Muted)
  }
 }}
 
@@ -140,6 +140,7 @@ fun callStatus(c:WorkerCall,uid:String)=if(c.serverStatus=="unanswered")"수락�
  Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)){Text(e.title,fontSize=16.sp,fontWeight=FontWeight.Bold,color=Ink);Text(e.detail,fontSize=14.sp,lineHeight=21.sp,color=Muted);SLPill(if(e.estimate)"시스템이 추정" else "사람이 확인",amber=e.estimate,fact=!e.estimate,estimate=e.estimate);if(preview)Text("기기 내 체험 기록",fontSize=13.sp,color=Muted)};Text(clockText(e.time),fontSize=14.sp,fontWeight=FontWeight.Bold,color=Muted)
 }}
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable fun ReportPage(s:WorkerState,busy:Boolean,actions:WorkerActions,onSubmit:(String,String,String,String,Boolean,String?,()->Unit)->Unit,onSheet:(String)->Unit,onMore:()->Unit={}){
  var tab by rememberSaveable{mutableIntStateOf(1)};var title by rememberSaveable{mutableStateOf("")};var zone by rememberSaveable{mutableStateOf(s.zone)};var category by rememberSaveable{mutableStateOf("추락")};var note by rememberSaveable{mutableStateOf("")};var anonymous by rememberSaveable{mutableStateOf(true)};var photo by rememberSaveable{mutableStateOf<String?>(null)}
  OnCameraResult(actions,"risk_before","new"){photo=it.path}
@@ -155,7 +156,7 @@ fun callStatus(c:WorkerCall,uid:String)=if(c.serverStatus=="unanswered")"수락�
   SLButton(if(busy)"신고를 저장하고 있어요…" else "신고 보내기",{onSubmit(title,zone,category,note,anonymous,photo){title="";note="";photo=null;tab=1}},enabled=!busy&&zone.isNotBlank(),icon="arrow")
   GhostButton("현장 위험 현황으로 돌아가기",{tab=1})
  }else{
-  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){val count={status:String->s.riskCounts[status]?:s.risks.count{it.status==status}};SLPill("미조치 ${count("open")}",amber=true);SLPill("재확인 대기 ${count("resolved")}",brand=true);SLPill("완료 ${count("verified")}")}
+  FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){val count={status:String->s.riskCounts[status]?:s.risks.count{it.status==status}};SLPill("미조치 ${count("open")}",amber=true);SLPill("재확인 대기 ${count("resolved")}",brand=true);SLPill("완료 ${count("verified")}")}
   if(s.risks.isEmpty())SLCard{EmptyState("shield","아직 등록된 위험이 없어요","발견한 위험을 사진으로 알려 주세요.")}
   s.risks.forEach{risk->SLCard(modifier=Modifier.clickable{onSheet("risk:${risk.id}")}){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){SLPill(risk.category,amber=risk.status=="open",brand=risk.status=="resolved");SLPill(riskStatusLabel(risk),amber=risk.status=="open",brand=risk.status=="resolved")};Text(risk.title,fontSize=18.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text("${risk.zone} · ${clockText(risk.time)} 신고",fontSize=14.sp,color=Muted)}}
   if(s.nextRisks!=null)SLButton("신고 더 보기",onMore,enabled=!busy,secondary=true)

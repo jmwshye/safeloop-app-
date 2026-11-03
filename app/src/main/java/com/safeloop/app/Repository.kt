@@ -108,6 +108,21 @@ class Repository(context: Context) {
             JSONObject(String(response.bytes, Charsets.UTF_8)).getJSONObject("photo").getString("id")
         }
     }
+    /** 얼굴을 가리기 전 원본을 같은 사진 기록에 붙인다. 올린 사람만 볼 수 있다. */
+    suspend fun uploadOriginal(photoId: String, bitmap: Bitmap) {
+        val expected = identity
+        val selectedSite = siteId.also { require(it.isNotBlank()) { "현장에 먼저 연결해 주세요." } }
+        withContext(Dispatchers.IO) {
+            val jpeg = ByteArrayOutputStream().apply { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 85, this)) }.toByteArray()
+            require(jpeg.size <= 5 * 1024 * 1024) { "사진 크기를 5 MiB 이하로 줄여 주세요." }
+            val boundary = "SafeLoop${UUID.randomUUID()}"
+            val multipart = ByteArrayOutputStream().apply {
+                write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"original.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".toByteArray())
+                write(jpeg); write("\r\n--$boundary--\r\n".toByteArray())
+            }.toByteArray()
+            send("PUT", "/sites/$selectedSite/photos/$photoId/original", multipart, "multipart/form-data; boundary=$boundary", expected = expected)
+        }
+    }
     suspend fun photo(photoId: String): ByteArray {
         UUID.fromString(photoId)
         return send("GET", "/sites/$siteId/photos/$photoId").bytes

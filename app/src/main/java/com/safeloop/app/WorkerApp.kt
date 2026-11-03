@@ -162,7 +162,7 @@ private fun sheetTitle(route:String)=when{
 @Composable private fun SelfCheckDialog(call:WorkerCall,now:Long,busy:Boolean,onSafe:()->Unit,onHelp:()->Unit,onVoiceSafe:()->Unit,onDial:()->Unit,preview:Boolean){val remaining=call.remainingSeconds(now);val bars=WindowInsets.safeDrawing.asPaddingValues();val context=LocalContext.current
  // 마이크를 쓰면 처음부터 듣는다. 안내 음성이 나오는 중에 답해도 된다.
  val canListen=remember{VoiceListener.hasMicrophone(context)&&VoiceListener.available(context)};val askHelp by rememberUpdatedState(onHelp);val sayOkay by rememberUpdatedState(onVoiceSafe)
- DisposableEffect(call.id){var asked=false;SafetyAlarm.start(context,remaining*1000,SafetySpeech.SELF_CHECK,listening=canListen);val listener=VoiceListener(context,continuous=true,onPartial={if(!asked&&helpRequested(it)){asked=true;askHelp()}},onFinal={if(!asked&&okayRequested(it)){asked=true;sayOkay()}},onGap={SafetyAlarm.pulse(context)});if(canListen)listener.start();onDispose{listener.stop();SafetyAlarm.stop()}}
+ DisposableEffect(call.id){var asked=false;SafetyAlarm.start(context,remaining*1000,SafetySpeech.SELF_CHECK,listening=canListen);val listener=VoiceListener(context,continuous=true,onPartial={},onHeard={words->if(!asked&&spokenAnswer(words)==SpokenAnswer.HELP){asked=true;askHelp()}},onSettled={words->if(!asked&&spokenAnswer(words)==SpokenAnswer.OKAY){asked=true;sayOkay()}},onGap={SafetyAlarm.pulse(context)});if(canListen)listener.start();onDispose{listener.stop();SafetyAlarm.stop()}}
  Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false,usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
   Surface(Modifier.fillMaxSize(),color=Color.White){Column(Modifier.fillMaxSize().padding(bars)){
    TapeStrip()

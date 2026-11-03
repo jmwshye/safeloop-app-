@@ -130,7 +130,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
  fun discardCapture(path:String?) {
   if(path==null)return
   val file=File(path)
-  if(file.parentFile==File(app.filesDir,"captures")&&file.extension=="jpg")file.delete()
+  if(file.parentFile==File(app.filesDir,"captures")&&file.extension=="jpg")deleteCapture(path)
  }
  fun checkPeer(target:String?,observed:String,localPhoto:String?,onSaved:()->Unit={})=action {
   require(observed=="착용"||observed=="미착용")
@@ -228,7 +228,9 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
   if(response=="help")requestedRoute="call:$callId"
   app.getSystemService(NotificationManager::class.java).cancel(callId.hashCode());feedback="응답을 저장했어요."
  }
- private suspend fun upload(path:String,purpose:String):String{val key="$purpose:$path";photoCache[key]?.let{return it};val bitmap=BitmapFactory.decodeFile(path)?:error("촬영 사진을 읽을 수 없어요.");return try{repository.upload(bitmap,purpose).also{photoCache[key]=it}}finally{bitmap.recycle()}}
+ private suspend fun upload(path:String,purpose:String):String{val key="$purpose:$path";photoCache[key]?.let{return it};val bitmap=BitmapFactory.decodeFile(path)?:error("촬영 사진을 읽을 수 없어요.");return try{repository.upload(bitmap,purpose).also{id->photoCache[key]=id;uploadOriginal(path,id)}}finally{bitmap.recycle()}}
+ // 원본 저장이 실패해도 얼굴을 가린 사진은 이미 기록에 들어갔으므로 흐름을 막지 않는다.
+ private suspend fun uploadOriginal(path:String,id:String){val original=originalPathOf(path);if(!java.io.File(original).exists())return;val bitmap=BitmapFactory.decodeFile(original)?:return;try{repository.uploadOriginal(id,bitmap)}catch(e:CancellationException){throw e}catch(_:Exception){}finally{bitmap.recycle()}}
  fun beginOnboarding(stage:String) {
   if(!state.preview && stage in setOf("code","sites") && state.hasSiteObligation()) {
    feedback="근무나 긴급 대응을 마친 뒤 현장을 바꿀 수 있어요.";return
