@@ -80,4 +80,5 @@ class ScreenCaptureTest {
     @Test fun records() = shot("5-3-records") { RecordsPage(done, {}, {}) }
     @Test fun timeline() = shot("5-2-timeline") { RecordsPage(done.copy(events = events), {}, {}, openTimeline = true) }
     @Test fun profile() = shot("6-1-profile") { ProfilePage(base, {}, {}) }
+    @Test fun temperature() = shot("6-4-temperature") { TemperatureSheet(safetyTemperature(done.work, events + listOf(WorkerEvent("c", "작업 전 확인", ""), WorkerEvent("p", "동료 교차 확인", ""))), true) }
 }

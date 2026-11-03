@@ -122,6 +122,7 @@ internal fun durationText(start:Long,end:Long):String{val minutes=((end-start)/6
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){Text("예상 일당",fontSize=14.sp,color=Muted);Text(if(shift.wageKnown)"${moneyText(shift.wage)}원" else "미입력",fontSize=22.sp,fontWeight=FontWeight.ExtraBold,color=Ink)}
   Text("실제 지급액과 다를 수 있어요.",fontSize=14.sp,color=Muted)
  }
+ safetyTemperature(s.work,s.events).todayGain.takeIf{it>0}?.let{SLPill("오늘 안전 온도 +%.1f°C".format(java.util.Locale.ROOT,it),brand=true)}
  s.calls.filter{it.status=="closed"}.take(3).forEach{CallSummary(it,s.uid){onSheet("call:${it.id}")}}
  SLCard{if(s.events.isEmpty())EmptyState("records","오늘 남은 기록이 없어요","출근과 안전 확인이 여기에 쌓여요.")else s.events.take(4).forEach{EventRow(it,s.preview)}}
 }
@@ -206,7 +207,7 @@ private fun riskStatusLabel(risk:WorkerRisk)=when(risk.status){"verified"->"재�
 
 @Composable fun ProfilePage(s:WorkerState,onSheet:(String)->Unit,onSettings:()->Unit){
  ScreenTitle("내 정보")
- SLCard {Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Avatar(s.name,56);Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)){Text(s.name,fontSize=21.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(listOf(s.job,s.zone).filter{it.isNotBlank()}.joinToString(" · "),fontSize=14.sp,color=Muted)};SLPill(if(s.preview)"체험 모드" else "현장 연결",amber=s.preview)}}
+ SLCard {Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Avatar(s.name,56);Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)){Text(s.name,fontSize=21.sp,fontWeight=FontWeight.ExtraBold,color=Ink);Text(listOf(s.job,s.zone).filter{it.isNotBlank()}.joinToString(" · "),fontSize=14.sp,color=Muted)};SLPill(if(s.preview)"체험 모드" else "현장 연결",amber=s.preview)};TemperatureSummary(safetyTemperature(s.work,s.events)){onSheet("temperature")}}
  SLCard {MenuRow("person","내 작업 정보","직종 · 작업 구역 · 예상 일당"){onSheet("profile")};HorizontalDivider(color=Line);MenuRow("link",if(s.preview)"실제 현장 연결하기" else "나의 현장",if(s.preview)"관리자의 참여 코드로 시작하세요" else "${s.site} · ${s.code}"){onSheet(if(s.preview)"connect" else "site")};HorizontalDivider(color=Line);MenuRow("bell","알림 설정","긴급 호출을 놓치지 않도록"){onSettings()};HorizontalDivider(color=Line);MenuRow("shield","기록과 개인정보","수집하는 정보와 내 열람 권한"){onSheet("privacy")};HorizontalDivider(color=Line);MenuRow("info","안전 감지 이용 안내","휴대 위치 · 감지의 한계"){onSheet("guide")}}
  if(s.preview){SectionHeading("앱 체험 도구");SLCard {Text("실제 센서 감시와 앱의 확인 흐름을 시험할 수 있어요. 아래 시험 신호는 다른 사람에게 전송되지 않습니다.",fontSize=14.sp,lineHeight=22.sp,color=Muted);MenuRow("activity","본인 확인 알림 체험","15초 응답 대기와 무응답 흐름"){onSheet("simulate-self")};HorizontalDivider(color=Line);MenuRow("people","동료 현장 확인 체험","수락 → 도착 → 상태 확인 → 마무리"){onSheet("simulate-peer")};HorizontalDivider(color=Line);MenuRow("clock","작업 중 안전 확인 체험","휴식 복귀 때 한 번 묻는 화면"){onSheet("simulate-checkin")};TextButton({onSheet("reset")}){Text("체험 기록 초기화",fontSize=14.sp,color=Muted)}}}
  else SLCard {MenuRow("logout","연결을 종료하고 체험 모드로","서버 기록은 그대로 보존됩니다"){onSheet("disconnect")}}
