@@ -110,6 +110,8 @@ export const photos = pgTable(
       .default(sql`'{}'::uuid[]`),
     shareWithSite: boolean('share_with_site').notNull().default(false),
     bytes: bytea('bytes').notNull(),
+    // 얼굴을 가리기 전 원본. 올린 사람만 볼 수 있고 보고서와 다른 사람 화면에는 쓰지 않는다.
+    originalBytes: bytea('original_bytes'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),

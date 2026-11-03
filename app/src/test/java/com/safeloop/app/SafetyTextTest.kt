@@ -13,6 +13,28 @@ class SafetyTextTest {
     @Test fun shortOkayAnswersCount() {
         listOf("괜찮아", "괜찮아요", "괜찮아 요", "괜찮습니다", "네 괜찮아요", "저 괜찮아요.", "멀쩡해요", "괜찮아요 괜찮아요", "네 네 괜찮아요", "응 괜찮아").forEach { assertTrue(it, okayRequested(it)) }
     }
+    @Test fun similarSoundingAnswersCount() {
+        listOf("괜찮어", "괜찮어요", "괜차나", "괜차나요", "괜찬아요", "갠찮아요", "괜 찮아요", "괜찮 아요").forEach { assertTrue(it, okayRequested(it)) }
+        listOf("도와조", "도와저", "도와져", "살려조").forEach { assertTrue(it, helpRequested(it)) }
+    }
+    @Test fun anyCandidateCanAnswerAndHelpComesFirst() {
+        assertEquals(SpokenAnswer.OKAY, spokenAnswer(listOf("관찬아", "괜찮아요")))
+        assertEquals(SpokenAnswer.HELP, spokenAnswer(listOf("도와 뭐", "도와줘")))
+        assertEquals(SpokenAnswer.HELP, spokenAnswer(listOf("괜찮아요", "도와줘")))
+        assertNull(spokenAnswer(listOf("안녕하세요", "감사합니다")))
+        assertNull(spokenAnswer(emptyList()))
+    }
+    @Test fun lowCandidatesCannotStopTheAlarm() {
+        assertNull(spokenAnswer(listOf("하나", "둘", "셋", "괜찮아요")))
+    }
+    @Test fun theShorterPromptNeverAnswers() {
+        val prompt = SafetySpeech.SELF_CHECK.replace(".", "")
+        assertNull(spokenAnswer(listOf(prompt)))
+        assertTrue(okayRequested("$prompt 괜찮아"))
+    }
+    @Test fun originalPhotoSitsNextToTheMaskedOne() {
+        assertEquals("/a/b.original.jpg", originalPathOf("/a/b.jpg"))
+    }
     @Test fun answersCountEvenWhenThePromptIsHeardToo() {
         listOf("강한 충격이 감지되었어요 괜찮아", "상태를 말씀해 주세요 괜찮아요", "괜찮아 상태를 말씀해 주세요").forEach { assertTrue(it, okayRequested(it)) }
         assertTrue(helpRequested("강한 충격이 감지되었어요 도와줘"))

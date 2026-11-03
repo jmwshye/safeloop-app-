@@ -401,6 +401,37 @@ test(
         const metadata = await sharp(image.data).metadata();
         assert.equal(metadata.format, 'jpeg');
         assert.equal(metadata.exif, undefined);
+        function original(bytes) {
+          const data = new FormData();
+          data.set(
+            'file',
+            new Blob([bytes], { type: 'image/jpeg' }),
+            'original.jpg',
+          );
+          return data;
+        }
+        assert.equal(
+          (await call(worker, 'GET', route + '/original')).status,
+          404,
+        );
+        assert.equal(
+          (await call(peer, 'PUT', route + '/original', original(img))).status,
+          403,
+        );
+        assert.equal(
+          (await call(worker, 'PUT', route + '/original', original(img)))
+            .status,
+          204,
+        );
+        const kept = await call(worker, 'GET', route + '/original');
+        assert.equal(kept.status, 200);
+        assert.equal((await sharp(kept.data).metadata()).exif, undefined);
+        for (const who of [boss, peer])
+          assert.equal(
+            (await call(who, 'GET', route + '/original')).status,
+            404,
+          );
+        assert.equal((await call(worker, 'GET', route)).status, 200);
         assert.equal((await call(worker, 'DELETE', route)).status, 204);
         assert.equal((await call(worker, 'GET', route)).status, 404);
       },

@@ -3,7 +3,7 @@ package com.safeloop.app
 // 말소리를 글자로 받은 뒤의 판단. 기기와 서버 없이 시험할 수 있게 순수 함수로 둔다.
 
 private val NEGATED = Regex("안\\s?(?:아파|다쳤|다쳐)|괜찮")
-private val HELP = Regex("도와\\s?(?:줘|주세요|달라)|살려\\s?(?:줘|주세요)|사람\\s?살려|구해\\s?(?:줘|주세요)|119\\s?(?:불러|좀|전화)|아파(?!트)|다쳤|다쳐\\s?(?:서|요)|못\\s?움직")
+private val HELP = Regex("도와\\s?(?:줘|조|저|져|주세요|달라)|살려\\s?(?:줘|조|저|주세요)|사람\\s?살려|구해\\s?(?:줘|주세요)|119\\s?(?:불러|좀|전화)|아파(?!트)|다쳤|다쳐\\s?(?:서|요)|못\\s?움직")
 
 /** 호출을 앞당기는 말만 찾는다. 경보를 끄는 말은 옆 사람 말소리에 꺼지면 위험해서 받지 않는다. */
 fun helpRequested(text: String): Boolean {
@@ -11,7 +11,7 @@ fun helpRequested(text: String): Boolean {
     return spoken.isNotEmpty() && !NEGATED.containsMatchIn(spoken) && HELP.containsMatchIn(spoken)
 }
 
-private const val OKAY_WORD = "(?:괜찮\\s?아\\s?요?|괜찮습니다|괜찬아\\s?요?|멀쩡해요)"
+private const val OKAY_WORD = "(?:괜\\s?찮\\s?아\\s?요?|괜찮어\\s?요?|괜찮습니다|괜찮네요|괜차나\\s?요?|괜찬아\\s?요?|갠찮아\\s?요?|멀쩡해요)"
 private val OKAY = Regex("(?:(?:네|예|응|저|나)\\s?)*$OKAY_WORD(?:[.!~,\\s]*$OKAY_WORD)*[.!~\\s]*")
 
 /** 안내 음성이 나오는 중에도 들으므로 마이크에 섞인 안내 문구는 빼고 판단한다. */
@@ -22,6 +22,15 @@ fun okayRequested(text: String): Boolean {
     val spoken = text.replace(Regex("\\s+"), " ").trim()
     if (helpRequested(spoken)) return false
     return OKAY.matches(spoken.split(" ").filterNot { it in PROMPT_WORDS }.joinToString(" "))
+}
+
+enum class SpokenAnswer { HELP, OKAY }
+
+/** 인식 후보 중 하나라도 맞으면 답으로 본다. 도움 요청이 항상 먼저이고, 괜찮다는 답은 윗 후보 3개까지만 믿는다. */
+fun spokenAnswer(words: List<String>): SpokenAnswer? = when {
+    words.any(::helpRequested) -> SpokenAnswer.HELP
+    words.take(3).any(::okayRequested) -> SpokenAnswer.OKAY
+    else -> null
 }
 
 data class RiskSpeech(val category: String, val zone: String?, val note: String)
