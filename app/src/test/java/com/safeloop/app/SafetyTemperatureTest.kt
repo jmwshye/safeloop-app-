@@ -18,7 +18,7 @@ class SafetyTemperatureTest {
     }
     @Test fun aFullDayRaisesTheTemperature() {
         val day = safetyTemperature(listOf(shift(today)), listOf(event("작업 전 확인"), event("동료 교차 확인"), event("작업 중 상태 응답")), today)
-        assertEquals(36.95, day.degrees, 0.06)
+        assertEquals(37.1, day.degrees, 0.001)
         assertEquals(day.todayGain, day.monthGain, 0.0)
         assertEquals(1, day.monthCounts[TemperatureStep.CHECKLIST])
     }
@@ -36,12 +36,12 @@ class SafetyTemperatureTest {
         val spam = safetyTemperature(emptyList(), List(20) { event("위험 신고", hour = 8 + it % 10) }, today)
         assertEquals(36.7, spam.degrees, 0.001)
         val busy = safetyTemperature(listOf(shift(today)), TemperatureStep.entries.flatMap { step -> listOf("작업 전 확인", "동료 확인", "작업 중 상태 응답", "위험 신고", "현장 확인 수락").map { event(it) } }, today)
-        assertEquals(37.1, busy.degrees, 0.001)
+        assertEquals(36.5 + DAILY_LIMIT, busy.degrees, 0.001)
     }
     @Test fun missedDaysDoNotCoolItDown() {
         val earlier = today.minusDays(10)
         val t = safetyTemperature(listOf(shift(earlier)), listOf(event("작업 전 확인", earlier)), today)
-        assertEquals(36.75, t.degrees, 0.06)
+        assertEquals(36.8, t.degrees, 0.001)
         assertEquals(0.0, t.monthGain, 0.0)
     }
     @Test fun monthlyNumbersCoverOnlyThisMonth() {
@@ -58,6 +58,37 @@ class SafetyTemperatureTest {
         assertEquals(temperatureStep("동료 교차 확인"), temperatureStep("동료 확인"))
         assertEquals(temperatureStep("동료 수락"), temperatureStep("현장 확인 수락"))
         assertNull(temperatureStep("이상 움직임 감지"))
+    }
+    @Test fun caringForPeersRaisesItMost() {
+        val alone = safetyTemperature(emptyList(), listOf(event("작업 전 확인")), today)
+        val caring = safetyTemperature(emptyList(), listOf(event("동료 교차 확인")), today)
+        val helping = safetyTemperature(emptyList(), listOf(event("현장 확인 수락")), today)
+        assertTrue(caring.degrees > alone.degrees)
+        assertTrue(helping.degrees > caring.degrees)
+        assertEquals(2, safetyTemperature(emptyList(), listOf(event("동료 확인"), event("현장 도착", hour = 15)), today).peerCare)
+    }
+    @Test fun levelsFollowTheTemperature() {
+        assertEquals(TemperatureLevel.START, temperatureLevel(36.5))
+        assertEquals(TemperatureLevel.START, temperatureLevel(38.9))
+        assertEquals(TemperatureLevel.STEADY, temperatureLevel(39.0))
+        assertEquals(TemperatureLevel.STEADY, temperatureLevel(41.9))
+        assertEquals(TemperatureLevel.TRUSTED, temperatureLevel(42.0))
+        assertEquals(TemperatureLevel.STEADY, nextTemperatureLevel(36.5))
+        assertNull(nextTemperatureLevel(42.0))
+    }
+    @Test fun aMonthOfCaringDaysReachesTrusted() {
+        val days = (1..3).map { today.withDayOfMonth(it) }
+        val earlier = (1..20).map { today.minusMonths(1).withDayOfMonth(it) }
+        val all = days + earlier
+        val t = safetyTemperature(all.map { shift(it) }, all.flatMap { listOf(event("작업 전 확인", it), event("동료 교차 확인", it)) }, today)
+        assertEquals(TemperatureLevel.TRUSTED, temperatureLevel(t.degrees))
+    }
+    @Test fun nameTagsTakeAboutOneAndTwoWeeksOfSteadyWork() {
+        fun after(n: Int): Double { val days = (1..n).map { today.minusDays(it.toLong() - 1) }; return safetyTemperature(days.map { shift(it) }, days.flatMap { listOf(event("작업 전 확인", it), event("동료 교차 확인", it)) }, today).degrees }
+        assertEquals(TemperatureLevel.START, temperatureLevel(after(4)))
+        assertEquals(TemperatureLevel.STEADY, temperatureLevel(after(5)))
+        assertEquals(TemperatureLevel.STEADY, temperatureLevel(after(10)))
+        assertEquals(TemperatureLevel.TRUSTED, temperatureLevel(after(11)))
     }
     @Test fun barStartsVisibleAndStopsAtFull() {
         assertTrue(temperatureFill(36.5) > 0f)

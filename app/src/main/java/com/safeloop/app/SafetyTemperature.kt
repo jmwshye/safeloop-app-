@@ -12,14 +12,27 @@ enum class TemperatureStep(val label: String, val degrees: Double, val perDay: I
     ATTEND("출근", .1, 1),
     CHECKOUT("퇴근 기록", .1, 1),
     CHECKLIST("작업 전 3가지 확인", .1, 1),
-    PEER("동료와 서로 확인", .1, 1),
+    PEER("동료와 서로 확인", .2, 1),
     CHECK_IN("작업 중 확인 응답", .1, 2),
     RISK("위험 신고·조치·재확인", .1, 2),
-    HELP("동료 돕기", .2, 1),
+    HELP("동료 돕기", .3, 1),
 }
 
 const val START_DEGREES = 36.5
-private const val DAILY_LIMIT = .6
+const val DAILY_LIMIT = .8
+
+/** 동료를 챙길수록 붙는 이름표. 지금은 본인만 본다. */
+enum class TemperatureLevel(val title: String, val from: Double) {
+    START("함께 시작", START_DEGREES),
+    STEADY("든든한 동료", 39.0),
+    TRUSTED("믿음 가는 동료", 42.0),
+}
+
+fun temperatureLevel(degrees: Double) = TemperatureLevel.entries.last { degrees >= it.from }
+fun nextTemperatureLevel(degrees: Double) = TemperatureLevel.entries.firstOrNull { it.from > degrees }
+
+/** 동료를 확인해 주거나 도운 횟수. 온도를 많이 올리는 기록이다. */
+val SafetyTemperature.peerCare get() = (monthCounts[TemperatureStep.PEER] ?: 0) + (monthCounts[TemperatureStep.HELP] ?: 0)
 
 data class SafetyTemperature(val degrees: Double, val monthGain: Double, val todayGain: Double, val monthCounts: Map<TemperatureStep, Int>, val activeDays: Set<String>)
 

@@ -24,7 +24,7 @@ private fun degreesText(value: Double) = "%.1f°C".format(Locale.ROOT, value)
 /** 온도 막대. 빨강은 긴급에만 쓰므로 파랑에서 초록으로만 바뀐다. */
 @Composable private fun TemperatureBar(degrees: Double) {
     Box(Modifier.fillMaxWidth().height(12.dp).background(NeutralFill, RoundedCornerShape(999.dp))) {
-        Box(Modifier.fillMaxWidth(temperatureFill(degrees)).fillMaxHeight().background(if (degrees >= 40) Ok else Brand, RoundedCornerShape(999.dp)))
+        Box(Modifier.fillMaxWidth(temperatureFill(degrees)).fillMaxHeight().background(if (degrees >= TemperatureLevel.STEADY.from) Ok else Brand, RoundedCornerShape(999.dp)))
     }
 }
 
@@ -34,24 +34,34 @@ private fun degreesText(value: Double) = "%.1f°C".format(Locale.ROOT, value)
     Column(Modifier.fillMaxWidth().clickable(onClick = onOpen), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("나의 안전 온도", Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Muted)
-            Text(degreesText(t.degrees), fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = if (t.degrees >= 40) Ok else Brand)
+            Text(degreesText(t.degrees), fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = if (t.degrees >= TemperatureLevel.STEADY.from) Ok else Brand)
             SLIcon("chevron", Modifier.size(18.dp), Muted)
         }
         TemperatureBar(t.degrees)
-        Text(if (t.monthGain > 0) "이번 달 +${degreesText(t.monthGain)}" else "출근하고 안전 확인을 남기면 올라가요", fontSize = 14.sp, color = Muted)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SLPill(temperatureLevel(t.degrees).title, fact = true)
+            Text(if (t.monthGain > 0) "이번 달 +${degreesText(t.monthGain)}" else "기록을 남기면 올라가요", Modifier.weight(1f), fontSize = 14.sp, color = Muted)
+        }
     }
 }
 
 /** 나의 안전 온도 상세. 순위나 다른 사람과의 비교는 보여 주지 않는다. */
 @Composable fun TemperatureSheet(t: SafetyTemperature, preview: Boolean, today: LocalDate = LocalDate.now(koreaZone)) {
-    ScreenHead("나의 안전 온도", "꾸준히 기록하고 서로 확인할수록 올라가요.")
+    ScreenHead("나의 안전 온도", "꾸준히 기록하고 동료를 챙길수록 올라가요.")
     SLCard(color = BrandSoft) {
+        SLPill(temperatureLevel(t.degrees).title, fact = true)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(degreesText(t.degrees), fontSize = 40.sp, lineHeight = 44.sp, fontWeight = FontWeight.ExtraBold, color = if (t.degrees >= 40) Ok else Brand)
+            Text(degreesText(t.degrees), fontSize = 40.sp, lineHeight = 44.sp, fontWeight = FontWeight.ExtraBold, color = if (t.degrees >= TemperatureLevel.STEADY.from) Ok else Brand)
             if (t.todayGain > 0) SLPill("오늘 +${degreesText(t.todayGain)}", brand = true)
         }
         TemperatureBar(t.degrees)
         Text("처음엔 모두 ${degreesText(START_DEGREES)}에서 시작해요. 이번 달 +${degreesText(t.monthGain)}", fontSize = 14.sp, lineHeight = 22.sp, color = Ink)
+        nextTemperatureLevel(t.degrees)?.let { Text("'${it.title}'까지 +${degreesText(it.from - t.degrees)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Brand) }
+    }
+    SLCard {
+        Text("동료를 챙긴 기록", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+        Row(verticalAlignment = Alignment.Bottom) { Text("${t.peerCare}", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, color = Ok); Text(" 회 · 이번 달", fontSize = 14.sp, color = Muted, modifier = Modifier.padding(bottom = 5.dp)) }
+        Text("서로 확인 ${t.monthCounts[TemperatureStep.PEER] ?: 0}회 · 동료 돕기 ${t.monthCounts[TemperatureStep.HELP] ?: 0}회. 동료를 챙긴 기록이 온도를 가장 많이 올려요.", fontSize = 14.sp, lineHeight = 22.sp, color = Muted)
     }
     SectionHeading("${YearMonth.from(today).monthValue}월 기록한 날")
     SLCard { MonthDots(t.activeDays, today) }
@@ -64,10 +74,17 @@ private fun degreesText(value: Double) = "%.1f°C".format(Locale.ROOT, value)
             StepRow(step.label + if (step.perDay > 1) " · 하루 ${step.perDay}번까지" else "") { SLPill("+${degreesText(step.degrees)}", brand = true) }
         }
     }
-    NoteText("하루에 최대 +0.6°C까지 올라가요.")
+    NoteText("하루에 최대 +${degreesText(DAILY_LIMIT)}까지 올라가요.")
+    SectionHeading("이름표")
+    FlatBox {
+        TemperatureLevel.entries.forEachIndexed { i, level ->
+            if (i > 0) HorizontalDivider(color = Line)
+            StepRow(level.title) { if (level == temperatureLevel(t.degrees)) SLPill("지금", fact = true) else SLPill(degreesText(level.from), neutral = true) }
+        }
+    }
     SLCard(color = OkSoft) {
         Text("평가에 쓰지 않아요", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-        Text("· 나만 볼 수 있어요. 반장·사업주에게 보내지 않아요\n· 사고, 호출, 결근으로 내려가지 않아요\n· '모름', '개선 필요'도 '확인'과 똑같이 올라가요", fontSize = 14.sp, lineHeight = 22.sp, color = Ink)
+        Text("· 온도와 이름표는 나만 볼 수 있어요. 반장·사업주에게 보내지 않아요\n· 사고, 호출, 결근으로 내려가지 않아요\n· '모름', '개선 필요'도 '확인'과 똑같이 올라가요", fontSize = 14.sp, lineHeight = 22.sp, color = Ink)
     }
     if (preview) NoteText("체험 기록으로 계산했어요.")
 }
