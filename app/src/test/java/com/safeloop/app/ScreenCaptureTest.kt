@@ -86,6 +86,14 @@ class ScreenCaptureTest {
     @Test fun records() = shot("5-3-records") { RecordsPage(done, {}, {}) }
     @Test fun timeline() = shot("5-2-timeline") { RecordsPage(done.copy(events = events), {}, {}, openTimeline = true) }
     @Test fun profile() = shot("6-1-profile") { ProfilePage(base, {}, {}) }
+    @Test fun temperatureTrusted() = shot("6-4-temperature-trusted") {
+        val days = (1..20).map { java.time.LocalDate.now(koreaZone).minusDays(it.toLong()) }
+        TemperatureSheet(safetyTemperature(days.map { WorkEntry("w$it", it.toString(), it.atTime(8, 0).atZone(koreaZone).toInstant().toEpochMilli(), it.atTime(17, 0).atZone(koreaZone).toInstant().toEpochMilli()) },
+            days.flatMap { d -> listOf("작업 전 확인", "동료 교차 확인").map { WorkerEvent("$it$d", it, "", d.atTime(9, 0).atZone(koreaZone).toInstant().toEpochMilli()) } }), false)
+    }
+    @Test fun temperature() = shot("6-4-temperature") { TemperatureSheet(safetyTemperature(done.work, events + listOf(WorkerEvent("c", "작업 전 확인", ""), WorkerEvent("p", "동료 교차 확인", ""))), true) }
+    @Test fun temperatureLarge() = shot("large-6-4-temperature", 1.5f) { TemperatureSheet(safetyTemperature(done.work, events + listOf(WorkerEvent("c", "작업 전 확인", ""), WorkerEvent("p", "동료 교차 확인", ""))), true) }
+    @Test fun profileLarge() = shot("large-6-1-profile", 1.5f) { ProfilePage(base, {}, {}) }
     @Test fun afterLarge() = shot("large-today-after", 1.5f) { HomePage(working.checkout().copy(events = events, calls = listOf(own.copy(status = "closed")))) }
     @Test fun riskListLarge() = shot("large-4-2-risks", 1.5f) { ReportPage(base, false, actions, { _, _, _, _, _, _, _ -> }, {}) }
     @Test fun timelineLarge() = shot("large-5-2-timeline", 1.5f) { RecordsPage(done.copy(events = events), {}, {}, openTimeline = true) }

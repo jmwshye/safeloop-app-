@@ -117,6 +117,7 @@ import androidx.compose.ui.window.DialogProperties
    activeSheet.startsWith("event:")->{val entry=state.events.firstOrNull{it.id==activeSheet.removePrefix("event:")};if(entry!=null){EventRow(entry,state.preview);DetailRow("원본 기록 ID",entry.id);if(entry.hash.isNotBlank())DetailRow("기록 연결값",entry.hash.take(12));DetailRow("서버 저장 시각",java.time.Instant.ofEpochMilli(entry.time).atZone(koreaZone).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));if(state.preview||entry.canCorrect){var note by remember(entry.id){mutableStateOf("")};SLField("정정할 내용",note,{note=it},singleLine=false);SLButton("원본을 보존하고 정정 요청",{controller.correctEvent(entry.id,note);sheet=null},enabled=!controller.busy&&note.isNotBlank())}}}
    activeSheet=="corrections"->{if(state.corrections.isEmpty())SmallNote("정정 요청이 없어요.");state.corrections.forEach{Text(it,color=Ink)}}
    activeSheet=="privacy"->PrivacySheet(state.preview)
+   activeSheet=="temperature"->TemperatureSheet(safetyTemperature(state.work,state.events),state.preview)
    activeSheet=="guide"->GuideSheet()
    activeSheet=="reset"->{Text("이 기기의 체험 기록을 초기화할까요?",fontSize=20.sp,fontWeight=FontWeight.Bold,color=Ink);Text("추가한 체험용 출퇴근·점검·신고·안전 확인 기록이 초기화됩니다. 실제 서버 기록에는 영향을 주지 않아요.",fontSize=15.sp,lineHeight=26.sp,color=Muted);SLButton("체험 기록 초기화",{controller.resetPreview();sheet=null})}
    activeSheet=="disconnect"->{Text("체험 모드로 전환할까요?",fontSize=20.sp,fontWeight=FontWeight.Bold,color=Ink);Text("현장 연결과 감시를 종료합니다. 서버의 기존 근로·안전 기록은 보존돼요.",fontSize=15.sp,lineHeight=26.sp,color=Muted);SLButton("체험 모드로 전환",{controller.usePreview();sheet=null})}
@@ -133,7 +134,7 @@ private fun sheetTitle(route:String)=when{
  route.startsWith("risk:")->"위험 신고 상세"
  route.startsWith("prompt:")->"작업 중 확인"
  route.startsWith("event:")->"원본 기록과 정정"
- else->mapOf("attendance" to "오늘의 출근","checkout" to "퇴근","checklist" to "작업 전 확인","peer" to "작업 전 확인","profile" to "내 작업 정보","connect" to "실제 현장 연결","site" to "나의 현장","requests" to "안전 확인 알림","privacy" to "기록과 개인정보","guide" to "안전 감지 이용 안내","reset" to "체험 기록 초기화","disconnect" to "현장 연결 종료","high-risk" to "고위험 작업","carried" to "기기 휴대 상태","notifications" to "알림 설정","export" to "기록 내보내기","corrections" to "정정 요청")[route]?:"안전고리"
+ else->mapOf("attendance" to "오늘의 출근","checkout" to "퇴근","checklist" to "작업 전 확인","peer" to "작업 전 확인","profile" to "내 작업 정보","connect" to "실제 현장 연결","site" to "나의 현장","requests" to "안전 확인 알림","privacy" to "기록과 개인정보","temperature" to "나의 안전 온도","guide" to "안전 감지 이용 안내","reset" to "체험 기록 초기화","disconnect" to "현장 연결 종료","high-risk" to "고위험 작업","carried" to "기기 휴대 상태","notifications" to "알림 설정","export" to "기록 내보내기","corrections" to "정정 요청")[route]?:"안전고리"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

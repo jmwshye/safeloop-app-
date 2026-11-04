@@ -37,6 +37,7 @@ class VoiceListener(context: Context, private val continuous: Boolean, private v
     private var active = false
     private var heard = ""
     private var words = emptyList<String>()
+    private var settledText = ""
     private var settle: Runnable? = null
     private var lastGap = 0L
     private var retryDelayMs = 150L
@@ -47,6 +48,7 @@ class VoiceListener(context: Context, private val continuous: Boolean, private v
         if (active || !available(app) || !hasMicrophone(app)) return
         active = true
         heard = ""
+        settledText = ""
         recognizer = runCatching { SpeechRecognizer.createSpeechRecognizer(app).apply { setRecognitionListener(callback) } }.getOrNull()
         if (recognizer == null) { active = false; return }
         handler.postDelayed(listen, delayMs)
@@ -89,16 +91,17 @@ class VoiceListener(context: Context, private val continuous: Boolean, private v
         if (!continuous || !active) { finish(); return }
         heard = ""
         words = emptyList()
+        settledText = ""
         runCatching { recognizer?.cancel() }
         val now = System.currentTimeMillis()
         if (now - lastGap >= 4_000) { lastGap = now; onGap() }
         handler.postDelayed(listen, retryDelayMs)
     }
 
-    /** 폰에 따라 최종 결과 없이 끝나므로, 말이 잠시 멈추면 지금까지 들은 말을 끝난 말로 본다. */
+    /** 폰에 따라 최종 결과 없이 끝나므로, 말이 잠시 멈추면 지금까지 들은 말을 끝난 말로 본다. 다음 판단은 그 뒤에 새로 들린 말부터 한다. */
     private fun settleLater() {
         settle?.let(handler::removeCallbacks)
-        settle = Runnable { log("settled: $words"); onSettled(words) }.also { handler.postDelayed(it, 400) }
+        settle = Runnable { val latest = latestSpeech(settledText, words); log("settled: $latest"); settledText = words.firstOrNull() ?: settledText; onSettled(latest) }.also { handler.postDelayed(it, 400) }
     }
 
     private fun receive(results: Bundle?): Boolean {
@@ -108,14 +111,14 @@ class VoiceListener(context: Context, private val continuous: Boolean, private v
         words = found
         heard = found.first()
         onPartial(heard)
-        onHeard(found)
+        onHeard(latestSpeech(settledText, found))
         return true
     }
 
     private val callback = object : RecognitionListener {
         override fun onPartialResults(partialResults: Bundle?) { if (receive(partialResults)) settleLater() }
-        override fun onResults(results: Bundle?) { settle?.let(handler::removeCallbacks); receive(results); if (words.isNotEmpty()) onSettled(words); retryDelayMs = 150; nextRound() }
-        override fun onError(error: Int) { log("error: $error"); settle?.let(handler::removeCallbacks); if (words.isNotEmpty()) onSettled(words); retryDelayMs = if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 400 else 150; nextRound() }
+        override fun onResults(results: Bundle?) { settle?.let(handler::removeCallbacks); receive(results); if (words.isNotEmpty()) onSettled(latestSpeech(settledText, words)); retryDelayMs = 150; nextRound() }
+        override fun onError(error: Int) { log("error: $error"); settle?.let(handler::removeCallbacks); if (words.isNotEmpty()) onSettled(latestSpeech(settledText, words)); retryDelayMs = if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 400 else 150; nextRound() }
         override fun onReadyForSpeech(params: Bundle?) { log("ready") }
         override fun onBeginningOfSpeech() { log("speech begins") }
         override fun onRmsChanged(rmsdB: Float) = Unit

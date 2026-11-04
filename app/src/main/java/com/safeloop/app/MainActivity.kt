@@ -49,6 +49,8 @@ class MainActivity:ComponentActivity(){
  private var notificationScope:String?=null
  private val notificationPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->val action=notificationAction;notificationAction=null;if(granted)action?.takeIf{notificationScope==controller.captureScope}?.let(::performNotificationAction)else controller.feedback="알림을 허용하면 본인 확인과 동료 요청을 받을 수 있어요. 내 정보에서 알림 설정을 확인해 주세요."}
  private val cameraPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(granted&&captures.scope==controller.captureScope)launchCamera()else{captures.cancel();controller.feedback="현장 사진을 찍으려면 카메라 권한을 허용해 주세요."}}
+ // 확인 요청 화면은 마이크 권한이 없으면 말을 듣지 않는다. 위급할 때 권한 창이 뜨지 않게 감시를 켤 때 미리 묻는다.
+ private val microphonePermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(!granted)controller.feedback="마이크를 허용하지 않으면 확인 요청에 말로 답할 수 없어요. 화면의 버튼으로 답해 주세요."}
  private val locationPermission=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){result->if(result.values.any{it})getLocation()else useLocation(null)}
  override fun onSaveInstanceState(outState:Bundle) {
   super.onSaveInstanceState(outState)
@@ -108,7 +110,7 @@ class MainActivity:ComponentActivity(){
 
  private fun performNotificationAction(action:NotificationAction) {
   when(action) {
-   NotificationAction.MONITOR->controller.setMonitoring(true)
+   NotificationAction.MONITOR->{controller.setMonitoring(true);if(VoiceListener.available(this)&&!VoiceListener.hasMicrophone(this))microphonePermission.launch(Manifest.permission.RECORD_AUDIO)}
    NotificationAction.DEMO_SELF->controller.simulateSelf()
    NotificationAction.DEMO_PEER->controller.simulateIncoming()
   }
