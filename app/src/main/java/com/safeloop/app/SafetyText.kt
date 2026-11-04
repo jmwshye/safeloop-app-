@@ -33,6 +33,16 @@ fun spokenAnswer(words: List<String>): SpokenAnswer? = when {
     else -> null
 }
 
+/**
+ * 옆 사람 말이 이어지면 인식기가 앞말에 붙여 한 문장으로 돌려준다. 잠깐 멈춘 뒤 새로 들린 부분을 앞에 두고 전체 문장도 함께 넘긴다.
+ * 앞부분이 고쳐져 이어 붙인 말이 아니면 전체 문장만 본다.
+ */
+fun latestSpeech(settled: String, words: List<String>): List<String> {
+    if (settled.isBlank()) return words
+    val fresh = words.mapNotNull { text -> text.takeIf { it.startsWith(settled) }?.substring(settled.length)?.trim()?.takeIf(String::isNotEmpty) }
+    return (fresh + words).distinct()
+}
+
 data class RiskSpeech(val category: String, val zone: String?, val note: String)
 
 private val RISK_WORDS = listOf(

@@ -47,6 +47,18 @@ class SafetyTextTest {
     @Test fun okayInsideOtherTalkDoesNotStopTheCall() {
         listOf("", "안 괜찮아요", "괜찮지 않아", "괜찮아요 도와주세요", "저기 괜찮아요 여기로 가져오세요", "그거 괜찮아 보여", "도와줘").forEach { assertFalse(it, okayRequested(it)) }
     }
+    @Test fun answerAfterNearbyTalkCountsWhenSaidAfterAPause() {
+        // 폰에서 옆 사람 말이 15초 내내 한 문장으로 이어진 경우. 잠깐 멈춘 뒤 말한 답만 떼어 본다.
+        val nearby = "자기 얼굴이 기록된 채로 들어가면"
+        assertNull(spokenAnswer(listOf("$nearby 괜찮아")))
+        assertEquals(SpokenAnswer.OKAY, spokenAnswer(latestSpeech(nearby, listOf("$nearby 괜찮아"))))
+        assertNull(spokenAnswer(latestSpeech(nearby, listOf("$nearby 그거 괜찮아 보여"))))
+        // 앞말에 '괜찮'이 있어도 뒤에 한 도움 요청은 받는다.
+        assertEquals(SpokenAnswer.HELP, spokenAnswer(latestSpeech("아까는 괜찮다고 했는데", listOf("아까는 괜찮다고 했는데 도와줘"))))
+        // 앞부분이 고쳐지면 전체 문장으로만 판단한다.
+        assertEquals(listOf("자기 얼굴 기록된 채 괜찮아"), latestSpeech(nearby, listOf("자기 얼굴 기록된 채 괜찮아")))
+        assertEquals(listOf("괜찮아"), latestSpeech("", listOf("괜찮아")))
+    }
     @Test fun riskSpeechFillsCategoryAndZone() {
         val opening = parseRiskSpeech("2층 동측 개구부에 덮개가 없어요")
         assertEquals("추락", opening.category); assertEquals("2층 동측", opening.zone); assertEquals("2층 동측 개구부에 덮개가 없어요", opening.note)
