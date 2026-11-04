@@ -2,24 +2,30 @@ package com.safeloop.app
 
 // 말소리를 글자로 받은 뒤의 판단. 기기와 서버 없이 시험할 수 있게 순수 함수로 둔다.
 
-private val NEGATED = Regex("안\\s?(?:아파|다쳤|다쳐)|괜찮")
-private val HELP = Regex("도와\\s?(?:줘|조|저|져|주세요|달라)|살려\\s?(?:줘|조|저|주세요)|사람\\s?살려|구해\\s?(?:줘|주세요)|119\\s?(?:불러|좀|전화)|아파(?!트)|다쳤|다쳐\\s?(?:서|요)|못\\s?움직")
+// 한국어, 영어, 러시아어로 답할 수 있다. 폰 인식기가 한국어로 설정돼 있으면 영어를 '헬프 미'처럼 한글로 적는다.
+// 글자는 소문자로 바꾼 뒤 판단한다.
+private val NEGATED = Regex("안\\s?(?:아파|다쳤|다쳐)|괜찮|not (?:ok|okay|fine|hurt)|i(?:'|’)?m (?:ok|okay|fine)|아임 (?:오케이|파인)|(?:don(?:'|’)?t|do not) need|no help|не нужн|в порядке")
+private val HELP = Regex("도와\\s?(?:줘|조|저|져|주세요|달라)|살려\\s?(?:줘|조|저|주세요)|사람\\s?살려|구해\\s?(?:줘|주세요)|119\\s?(?:불러|좀|전화)|아파(?!트)|다쳤|다쳐\\s?(?:서|요)|못\\s?움직" +
+    "|\\bhelp\\b|\\bsave me\\b|헬프|помоги|спаси")
 
 /** 호출을 앞당기는 말만 찾는다. 경보를 끄는 말은 옆 사람 말소리에 꺼지면 위험해서 받지 않는다. */
 fun helpRequested(text: String): Boolean {
-    val spoken = text.replace(Regex("\\s+"), " ").trim()
+    val spoken = text.replace(Regex("\\s+"), " ").trim().lowercase()
     return spoken.isNotEmpty() && !NEGATED.containsMatchIn(spoken) && HELP.containsMatchIn(spoken)
 }
 
-private const val OKAY_WORD = "(?:괜\\s?찮\\s?아\\s?요?|괜찮어\\s?요?|괜찮습니다|괜찮네요|괜차나\\s?요?|괜찬아\\s?요?|갠찮아\\s?요?|멀쩡해요)"
-private val OKAY = Regex("(?:(?:네|예|응|저|나)\\s?)*$OKAY_WORD(?:[.!~,\\s]*$OKAY_WORD)*[.!~\\s]*")
+// '오케이'만 말한 것은 받지 않는다. 한국어 대화에서도 흔히 쓰여 옆 사람 말에 경보가 꺼질 수 있다.
+private const val OKAY_WORD = "(?:괜\\s?찮\\s?아\\s?요?|괜찮어\\s?요?|괜찮습니다|괜찮네요|괜차나\\s?요?|괜찬아\\s?요?|갠찮아\\s?요?|멀쩡해요" +
+    "|i(?:'|’)?m (?:ok|okay|fine|alright)|i am (?:ok|okay|fine|alright)|아임 ?(?:오케이|파인)|아이엠 ?(?:오케이|파인)" +
+    "|я в порядке|я в норме|(?:всё|все) (?:хорошо|нормально))"
+private val OKAY = Regex("(?:(?:네|예|응|저|나|yes|yeah|да)[.,]?\\s?)*$OKAY_WORD(?:[.!~,\\s]*$OKAY_WORD)*[.!~\\s]*")
 
 /** 안내 음성이 나오는 중에도 들으므로 마이크에 섞인 안내 문구는 빼고 판단한다. */
 private val PROMPT_WORDS = setOf("강한", "충격이", "충격", "감지되었어요", "감지됐어요", "감지", "되었어요", "상태를", "말씀해", "주세요")
 
 /** 짧게 괜찮다고 답한 말만 인정한다. 문장 속 괜찮다는 말이나 옆 사람 대화로 경보가 꺼지면 안 되고, 도움 요청이 항상 먼저다. */
 fun okayRequested(text: String): Boolean {
-    val spoken = text.replace(Regex("\\s+"), " ").trim()
+    val spoken = text.replace(Regex("\\s+"), " ").trim().lowercase()
     if (helpRequested(spoken)) return false
     return OKAY.matches(spoken.split(" ").filterNot { it in PROMPT_WORDS }.joinToString(" "))
 }
