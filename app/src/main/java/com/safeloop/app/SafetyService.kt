@@ -25,6 +25,7 @@ class SafetyService : Service(), SensorEventListener {
     private var raw = false
     private var settlingUntil = 0L
     private var lastSampleAt = 0L
+    private var lastPeakLogAt = 0L
     private var wakeLock: PowerManager.WakeLock? = null
     private var monitorSession: String? = null
     private var monitorSite = ""
@@ -98,7 +99,16 @@ class SafetyService : Service(), SensorEventListener {
         val accelerationG = sqrt(v.sumOf { it * it }) / 9.80665
         if (now - lastSampleAt >= 50) { samples.addLast(now to accelerationG); lastSampleAt = now }
         while (samples.isNotEmpty() && (now - samples.first().first > 15000 || samples.size > 300)) samples.removeFirst()
-        if (!detector.sample(now, v[0], v[1], v[2], highRisk = prefs.getString("highRiskTask", null) != null)) return
+        val wasTracking = detector.tracking
+        val lastWindow = detector.lastWindow
+        // 화면 작업으로 센서 값이 몰려 와도 측정된 시각으로 판단한다.
+        val detected = detector.sample(event.timestamp / 1_000_000, v[0], v[1], v[2], highRisk = prefs.getString("highRiskTask", null) != null)
+        if (BuildConfig.DEBUG) {
+            if (accelerationG >= 1.5 && now - lastPeakLogAt >= 300) { lastPeakLogAt = now; android.util.Log.d("SafetyMotion", "peak %.1fG".format(java.util.Locale.ROOT, accelerationG)) }
+            if (!wasTracking && detector.tracking) android.util.Log.d("SafetyMotion", "impact %.1fG, watching %dms".format(java.util.Locale.ROOT, accelerationG, MotionDetector.WATCH_MS))
+            if (detector.lastWindow != lastWindow) android.util.Log.d("SafetyMotion", detector.lastWindow.orEmpty())
+        }
+        if (!detected) return
         if (prefs.getString("pendingSignal", null) != null && prefs.getString("signalSession", null) == monitorSession &&
             prefs.getString("signalSite", null) == monitorSite && prefs.getString("signalAttendance", null) == prefs.getString("attendanceId", null)) return
         val detectedAt = Instant.now()
