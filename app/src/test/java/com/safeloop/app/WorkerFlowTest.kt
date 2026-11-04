@@ -4,6 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WorkerFlowTest {
+ @Test fun answeringPreviewSensorSignalStopsLaterSirenAndTorch(){
+  // 체험 모드에서 실제로 흔들어 생긴 신호는 신호 id가 호출 id다. 답하면 서비스가 15초 뒤 손전등을 켜지 않아야 한다.
+  assertEquals("signal",answeredSensorAlert("signal","safe",preview=true,localAlert="signal",localCallId=null))
+  assertEquals("signal",answeredSensorAlert("signal","help",preview=true,localAlert="signal",localCallId=null))
+  assertNull(answeredSensorAlert("menu-demo","safe",preview=true,localAlert="signal",localCallId=null))
+  // 서버 모드는 서버 호출 id로 맞추고, 도움 요청은 괜찮다는 응답으로 오인되지 않게 표시하지 않는다.
+  assertEquals("signal",answeredSensorAlert("incident","safe",preview=false,localAlert="signal",localCallId="incident"))
+  assertNull(answeredSensorAlert("incident","help",preview=false,localAlert="signal",localCallId="incident"))
+  assertNull(answeredSensorAlert("signal","safe",preview=false,localAlert="signal",localCallId=null))
+  assertNull(answeredSensorAlert("signal","safe",preview=true,localAlert=null,localCallId=null))
+ }
  @Test fun highRiskCodesAreShownInKorean(){assertEquals("비계 위 작업",highRiskLabel("scaffold"));assertEquals("고소작업대 작업",highRiskLabel("aerial_lift"));assertEquals("",highRiskLabel(null))}
  @Test fun timelineNeverShowsRawResponseCodes(){listOf("safe","help","accepted","arrived","declined","retry","observe:conscious","finish:no_help_needed").forEach{assertFalse(it,responseLabel(it).any{c->c in 'a'..'z'})}}
  @Test fun attendanceDoesNotRequireSafetyChecklist(){val before=WorkerState();val after=before.attend();assertEquals(0,after.checkCount);assertNotNull(after.currentShift);assertEquals(180000,after.currentShift!!.wage);assertThrows(IllegalArgumentException::class.java){after.attend()}}

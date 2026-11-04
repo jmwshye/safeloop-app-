@@ -223,7 +223,7 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
    response.startsWith("finish:")->{val body=mutableMapOf<String,Any?>("reason" to response.substringAfter(':'));if(localPhoto!=null)body["photoId"]=upload(localPhoto,"incident_scene");repository.request("PUT","$path/resolution",body)}
    else->error("지원하지 않는 응답입니다.")
   };rememberCall(result.obj("incident"));viewModelScope.launch{changed()}}
-  if(response=="safe"&&monitoringPrefs.getString("localCallId",null)==callId){monitoringPrefs.edit().putString("ackAlert",monitoringPrefs.getString("localAlert",null)).apply();app.getSystemService(NotificationManager::class.java).cancel(103)}
+  answeredSensorAlert(callId,response,state.preview,monitoringPrefs.getString("localAlert",null),monitoringPrefs.getString("localCallId",null))?.let{monitoringPrefs.edit().putString("ackAlert",it).apply();app.getSystemService(NotificationManager::class.java).cancel(103)}
   if(response=="safe")requestedRoute="ack:$callId"
   if(response=="help")requestedRoute="call:$callId"
   app.getSystemService(NotificationManager::class.java).cancel(callId.hashCode());feedback="응답을 저장했어요."
@@ -437,6 +437,17 @@ class WorkerController(private val app:Application):AndroidViewModel(app) {
 private fun Map<String,Any?>.text(key:String)=this[key]?.toString().orEmpty()
 private fun Map<String,Any?>.nullText(key:String)=this[key]?.toString()?.takeIf{it.isNotBlank()}
 private fun Map<String,Any?>.number(key:String)=this[key] as? Number
+/**
+ * 감시 서비스는 ackAlert가 없으면 15초 뒤 사이렌·손전등을 켠다. 본인이 답한 신호를 돌려준다.
+ * 체험 모드의 센서 신호는 서버를 거치지 않아 신호 id가 곧 호출 id다. 도움 요청은 앱이 직접 사이렌을 켜므로 서비스가 다시 켜지 않게 한다.
+ * 서버 모드의 도움 요청은 서비스가 괜찮다는 응답으로 보내므로 표시하지 않는다.
+ */
+internal fun answeredSensorAlert(callId:String,response:String,preview:Boolean,localAlert:String?,localCallId:String?):String?=when{
+ localAlert==null->null
+ response=="safe"&&callId==localCallId->localAlert
+ preview&&callId==localAlert&&(response=="safe"||response=="help")->localAlert
+ else->null
+}
 private fun answerLabel(value:Any?)=when(value){"confirmed"->"확인";"needs_attention"->"개선 필요";"unknown"->"모름";else->""}
 private fun categoryCode(label:String)=mapOf("추락" to "fall","넘어짐" to "trip","충돌" to "collision","감전" to "electric")[label]?:"other"
 private fun categoryLabel(code:String)=mapOf("fall" to "추락","trip" to "넘어짐","collision" to "충돌","electric" to "감전")[code]?:"기타"
